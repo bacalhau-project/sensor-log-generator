@@ -1,0 +1,141 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+develop-eggs/
+.installed.cfg
+*.egg-info/
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Virtual environments
+.env
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Project specific - databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.lock
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Project specific - logs
+logs/*.log
+logs/*.txt
+*.log
+!logs/.keep
+
+# Project specific - data files
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.db.lock
+data/*.sqlite
+data/*.csv
+data/*.json
+data/tmp/
+!data/.keep
+
+# Test artifacts
+test_*.db
+test_*.db-journal
+test_*.db-wal
+test_*.db-shm
+test_*.db.lock
+debug_*.db
+multiprocess_*.db
+multiprocess_*.db.lock
+
+# Docker and build artifacts
+.latest-image-tag
+.latest-registry-image
+.latest-registry-image-latest
+.latest-semver
+
+# Environment files
+.env
+.env.*
+.envrc
+!.env.example
+
+# Documentation artifacts
+llm_docs.txt
+LLM_DOCUMENTATION.md
+
+# Backup files
+*.backup
+*.bak
+*.old
+backup/
+backups/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+desktop.ini
+
+# Lock files (except poetry.lock and uv.lock which should be committed)
+*.lock
+!poetry.lock
+!uv.lock
+!Pipfile.lock
