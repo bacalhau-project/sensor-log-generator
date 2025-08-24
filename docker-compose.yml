@@ -1,6 +1,6 @@
 services:
   sensor-simulators:
-    image: ghcr.io/bacalhau-project/sensor-log-generator:2505081831
+    image: ghcr.io/bacalhau-project/sensor-log-generator:latest
     pull_policy: always
     restart: unless-stopped
     environment:

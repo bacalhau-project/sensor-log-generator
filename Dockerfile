@@ -10,7 +10,8 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Copy dependency files first for better caching
-COPY pyproject.toml .
+# README.md is required by pyproject.toml
+COPY pyproject.toml README.md ./
 COPY uv.lock* .
 
 # Install Python 3.12 and create virtual environment
@@ -25,8 +26,8 @@ COPY main.py .
 COPY collector.py .
 COPY src/ ./src/
 
-# Pre-compile Python files to bytecode
-RUN uv run python -m compileall -b main.py collector.py src/
+# Pre-compile Python files to bytecode (using venv python directly)
+RUN /.venv/bin/python -m compileall -b main.py collector.py src/
 
 # Run the application using the pre-installed environment
 ENTRYPOINT ["uv", "run", "--no-sync", "main.py"]

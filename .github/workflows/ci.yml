@@ -1,0 +1,333 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  lint-and-typecheck:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+          uv pip install ruff mypy types-PyYAML types-requests
+
+      - name: Run ruff linter
+        run: |
+          uv run ruff check src/ tests/ main.py
+          uv run ruff format --check src/ tests/ main.py
+
+      - name: Run mypy type checker
+        run: |
+          uv run mypy src/ main.py --ignore-missing-imports
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
+  build-container:
+    name: Build Docker Container
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build with build.py (test mode)
+        run: |
+          # Install Python dependencies for build script
+          pip install rich
+          
+          # Run build.py in skip-push mode for testing
+          python build.py --skip-push --version-tag test-${{ github.sha }}
+          
+          # Export the test image for artifact upload
+          docker save ghcr.io/${{ github.repository }}:test-${{ github.sha }} > /tmp/sensor-simulator.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/sensor-simulator.tar
+          retention-days: 1
+
+  test-container:
+    name: Test Docker Container
+    runs-on: ubuntu-latest
+    needs: build-container
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          docker load --input /tmp/sensor-simulator.tar
+          # Retag for simpler testing
+          docker tag ghcr.io/${{ github.repository }}:test-${{ github.sha }} sensor-simulator:test
+
+      - name: Test container startup
+        run: |
+          # Create necessary directories
+          mkdir -p data logs config
+          
+          # Create test config
+          cat > config/test-config.yaml << EOF
+          sensor:
+            type: "environmental"
+            location: "CI Test"
+            manufacturer: "SensorTech"
+            model: "EnvMonitor-3000"
+            firmware_version: "1.4"
+          
+          simulation:
+            readings_per_second: 10
+            run_time_seconds: 5
+          
+          anomalies:
+            enabled: true
+            probability: 0.1
+          
+          database:
+            path: "/app/data/test.db"
+          
+          logging:
+            level: "INFO"
+            console_output: true
+          EOF
+
+      - name: Run container with default settings
+        run: |
+          docker run -d --name sensor-default \
+            -v $(pwd)/data:/app/data \
+            -v $(pwd)/logs:/app/logs \
+            sensor-simulator:test
+          
+          # Wait for container to generate some data
+          sleep 10
+          
+          # Check if container is still running
+          docker ps | grep sensor-default
+          
+          # Check logs for errors
+          docker logs sensor-default 2>&1 | grep -i error && exit 1 || true
+          
+          # Stop container
+          docker stop sensor-default
+
+      - name: Run container with custom config
+        run: |
+          docker run -d --name sensor-custom \
+            -v $(pwd)/data:/app/data \
+            -v $(pwd)/config:/app/config \
+            -e CONFIG_FILE=/app/config/test-config.yaml \
+            sensor-simulator:test
+          
+          # Wait for simulation to complete
+          sleep 7
+          
+          # Check if data was generated
+          if [ ! -f "data/test.db" ]; then
+            echo "Database file not created!"
+            exit 1
+          fi
+          
+          # Verify data was written
+          apt-get update && apt-get install -y sqlite3
+          count=$(sqlite3 data/test.db "SELECT COUNT(*) FROM sensor_data;" 2>/dev/null || echo "0")
+          echo "Generated $count readings"
+          
+          if [ "$count" -eq "0" ]; then
+            echo "No data generated!"
+            docker logs sensor-custom
+            exit 1
+          fi
+          
+          # Stop container
+          docker stop sensor-custom || true
+
+      - name: Test container with monitoring
+        run: |
+          docker run -d --name sensor-monitor \
+            -v $(pwd)/data:/app/data \
+            -e MONITORING_ENABLED=true \
+            -e MONITORING_PORT=8080 \
+            -p 8080:8080 \
+            sensor-simulator:test
+          
+          # Wait for monitoring to start
+          sleep 5
+          
+          # Test health endpoint
+          curl -f http://localhost:8080/healthz || exit 1
+          
+          # Test metrics endpoint
+          curl -f http://localhost:8080/metricz || exit 1
+          
+          # Stop container
+          docker stop sensor-monitor
+
+      - name: Test container resilience
+        run: |
+          # Test with missing directories
+          docker run -d --name sensor-resilient \
+            sensor-simulator:test
+          
+          sleep 5
+          
+          # Container should still be running
+          docker ps | grep sensor-resilient
+          
+          # Check for graceful handling
+          docker logs sensor-resilient 2>&1 | grep -E "(ERROR|CRITICAL)" | grep -v "recoverable" && exit 1 || true
+          
+          docker stop sensor-resilient
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-container
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          docker load --input /tmp/sensor-simulator.tar
+          # Retag for simpler testing
+          docker tag ghcr.io/${{ github.repository }}:test-${{ github.sha }} sensor-simulator:test
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: sensor-simulator:test
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+  publish:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, test-container, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push with build.py
+        run: |
+          # Install Python dependencies for build script
+          pip install rich
+          
+          # Get the current version from the latest tag or use default
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION_NUMBER=${LATEST_TAG#v}
+          
+          # Build and push with auto version bump
+          python build.py --version-bump minor
+          
+          # Also tag as latest for main branch
+          docker tag ghcr.io/${{ github.repository }}:$(cat .latest-semver) ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:latest
+          
+          # Tag with branch name
+          docker tag ghcr.io/${{ github.repository }}:$(cat .latest-semver) ghcr.io/${{ github.repository }}:main
+          docker push ghcr.io/${{ github.repository }}:main

@@ -201,6 +201,7 @@ Configure the simulator through environment variables:
 | `ANOMALY_PROBABILITY` | Chance of anomalies (0-1) | 0.05 |
 | `LOG_LEVEL` | Logging verbosity (DEBUG/INFO/WARNING/ERROR) | INFO |
 | `PRESERVE_EXISTING_DB` | Keep existing database on startup | false |
+| `SENSOR_WAL` | Enable SQLite WAL mode for better concurrency | false |
 | `MONITORING_ENABLED` | Enable web monitoring dashboard | false |
 | `MONITORING_PORT` | Dashboard port number | 8080 |
 | `CONFIG_FILE` | Path to configuration YAML | config.yaml |
@@ -321,6 +322,7 @@ anomalies:
 # Database settings
 database:
   path: "data/sensor_data.db"
+  # Note: Use SENSOR_WAL=true env var to enable WAL mode for better concurrent access
 
 # Logging configuration
 logging:
@@ -334,6 +336,40 @@ monitoring:
   port: 8080
   host: "0.0.0.0"
 ```
+
+### Database Modes
+
+The simulator supports two SQLite journal modes:
+
+**DELETE Mode (Default)**
+- ✅ Universal compatibility (works everywhere)
+- ✅ Works with Docker Desktop on Mac/Windows
+- ✅ Simple file management
+- Use when: Maximum compatibility is needed
+
+**WAL Mode (Write-Ahead Logging)**
+- ✅ **Works great on Linux** (including Docker on Linux)
+- ⚠️ **Issues on Mac/Windows** with Docker Desktop - see [DOCKER_WAL_MODE.md](DOCKER_WAL_MODE.md)
+- Better concurrent read/write performance
+- Allows multiple readers while writing
+- Use when: Running on Linux with multiple readers
+
+Enable WAL mode with the `SENSOR_WAL` environment variable:
+```bash
+# On Linux (works great)
+export SENSOR_WAL=true
+uv run main.py
+
+# Docker on Linux (works great)
+docker run -e SENSOR_WAL=true -v $(pwd)/data:/app/data sensor-simulator
+
+# Docker Desktop on Mac/Windows (use DELETE mode)
+docker run -v $(pwd)/data:/app/data sensor-simulator  # Don't set SENSOR_WAL
+```
+
+**Platform Notes**: 
+- **Linux**: Both modes work well. Use WAL for better concurrency.
+- **Mac/Windows (Docker Desktop)**: Use DELETE mode (default) due to file sharing limitations.
 
 ### Manufacturer and Firmware Effects
 

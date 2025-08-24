@@ -1,0 +1,59 @@
+version: '3.8'
+
+# Development configuration that works identically on Mac and Linux
+# Uses DELETE mode and named volumes for cross-platform compatibility
+
+services:
+  # Sensor simulator (writer)
+  sensor:
+    build: .
+    image: sensor-simulator:latest
+    container_name: sensor-writer
+    environment:
+      - LOG_LEVEL=INFO
+      - MONITORING_ENABLED=true
+      - MONITORING_PORT=8080
+      # Don't set SENSOR_WAL - use DELETE mode for cross-platform compatibility
+    volumes:
+      - sensor-data:/app/data  # Named volume works on all platforms
+    ports:
+      - "8080:8080"  # Monitoring API
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Your reader process (second container)
+  reader:
+    build: .
+    image: sensor-simulator:latest
+    container_name: sensor-reader
+    depends_on:
+      - sensor
+    volumes:
+      - sensor-data:/app/data:ro  # Same volume, read-only
+    command: |
+      bash -c '
+        echo "Waiting for database to be created..."
+        while [ ! -f /app/data/sensor_data.db ]; do
+          sleep 2
+        done
+        echo "Database found, starting reader..."
+        while true; do
+          echo "=== Reader Status at $$(date) ==="
+          sqlite3 /app/data/sensor_data.db "
+            SELECT '\''Total readings: '\'' || COUNT(*) FROM sensor_readings;
+            SELECT '\''Latest: '\'' || MAX(timestamp) FROM sensor_readings;
+            SELECT '\''Anomalies: '\'' || SUM(anomaly_flag) FROM sensor_readings;
+          " 2>/dev/null || echo "Database temporarily locked, retrying..."
+          sleep 10
+        done
+      '
+    restart: unless-stopped
+
+# Named volume for database (works on all platforms)
+volumes:
+  sensor-data:
+    driver: local

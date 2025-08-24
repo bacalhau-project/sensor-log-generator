@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # Test DELETE mode (default)
+  sensor-delete:
+    build: .
+    container_name: sensor-delete-mode
+    environment:
+      - LOG_LEVEL=INFO
+      - MONITORING_ENABLED=true
+      - MONITORING_PORT=8081
+      # No SENSOR_WAL - uses DELETE mode
+    volumes:
+      - ./test_data_delete:/app/data
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Test WAL mode
+  sensor-wal:
+    build: .
+    container_name: sensor-wal-mode
+    environment:
+      - LOG_LEVEL=INFO
+      - SENSOR_WAL=true  # Enable WAL mode
+      - MONITORING_ENABLED=true
+      - MONITORING_PORT=8082
+    volumes:
+      - ./test_data_wal:/app/data
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Reader service for DELETE mode
+  reader-delete:
+    build: .
+    container_name: reader-delete-mode
+    depends_on:
+      - sensor-delete
+    volumes:
+      - ./test_data_delete:/app/data:ro  # Read-only mount
+    command: |
+      bash -c '
+        echo "Reader for DELETE mode starting..."
+        sleep 10
+        while true; do
+          COUNT=$$(sqlite3 /app/data/sensor_data.db "SELECT COUNT(*) FROM sensor_readings;" 2>&1)
+          if [[ $$? -eq 0 ]]; then
+            echo "[DELETE Reader] Records: $$COUNT"
+          else
+            echo "[DELETE Reader] Error: $$COUNT"
+          fi
+          sleep 5
+        done
+      '
+
+  # Reader service for WAL mode
+  reader-wal:
+    build: .
+    container_name: reader-wal-mode
+    depends_on:
+      - sensor-wal
+    volumes:
+      - ./test_data_wal:/app/data:ro  # Read-only mount
+    command: |
+      bash -c '
+        echo "Reader for WAL mode starting..."
+        sleep 10
+        while true; do
+          COUNT=$$(sqlite3 /app/data/sensor_data.db "SELECT COUNT(*) FROM sensor_readings;" 2>&1)
+          if [[ $$? -eq 0 ]]; then
+            echo "[WAL Reader] Records: $$COUNT"
+          else
+            echo "[WAL Reader] Error: $$COUNT"
+          fi
+          sleep 5
+        done
+      '
+
+  # Cross-boundary tester (host-like access)
+  boundary-tester:
+    image: alpine:latest
+    container_name: boundary-tester
+    depends_on:
+      - sensor-delete
+      - sensor-wal
+    volumes:
+      - ./test_data_delete:/delete:ro
+      - ./test_data_wal:/wal:ro
+    command: |
+      sh -c '
+        apk add --no-cache sqlite
+        echo "Boundary tester starting..."
+        sleep 15
+        while true; do
+          echo "=== Cross-Boundary Test ==="
+          DELETE_COUNT=$$(sqlite3 /delete/sensor_data.db "SELECT COUNT(*) FROM sensor_readings;" 2>&1 || echo "ERROR")
+          WAL_COUNT=$$(sqlite3 /wal/sensor_data.db "SELECT COUNT(*) FROM sensor_readings;" 2>&1 || echo "ERROR")
+          echo "DELETE mode: $$DELETE_COUNT records"
+          echo "WAL mode: $$WAL_COUNT records"
+          
+          # Check for lock issues
+          DELETE_LOCK=$$(sqlite3 /delete/sensor_data.db ".timeout 100" "SELECT COUNT(*) FROM sensor_readings;" 2>&1 | grep -c "locked" || true)
+          WAL_LOCK=$$(sqlite3 /wal/sensor_data.db ".timeout 100" "SELECT COUNT(*) FROM sensor_readings;" 2>&1 | grep -c "locked" || true)
+          
+          if [ $$DELETE_LOCK -gt 0 ]; then
+            echo "⚠️  DELETE mode: Database lock detected!"
+          fi
+          if [ $$WAL_LOCK -gt 0 ]; then
+            echo "⚠️  WAL mode: Database lock detected!"
+          fi
+          
+          echo "---"
+          sleep 10
+        done
+      '

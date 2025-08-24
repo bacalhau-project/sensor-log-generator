@@ -1,0 +1,83 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+eggs
+.eggs
+lib
+lib64
+parts
+sdist
+var
+wheels
+*.egg-info
+.installed.cfg
+
+# Virtual environments
+env
+venv
+ENV
+env.bak
+venv.bak
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.mypy_cache
+.ruff_cache
+coverage.xml
+*.cover
+
+# Project specific
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+logs/*.log
+test_*.db
+*.db.lock
+
+# Documentation
+docs
+*.md
+!README.md
+
+# CI/CD
+.github
+.pre-commit-config.yaml
+.yamllint.yml
+Makefile
+scripts
+
+# Misc
+.DS_Store
+.env
+.envrc
+*.backup
+*.bak
+*.tmp
+*.temp
+
+# Build artifacts
+.latest-*

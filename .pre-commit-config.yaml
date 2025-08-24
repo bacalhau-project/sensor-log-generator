@@ -1,0 +1,99 @@
+repos:
+  # Ruff - Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # MyPy - Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-strict-optional]
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+        files: ^(src/|main\.py)
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # Python specific checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-ast
+      - id: check-builtin-literals
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: fix-byte-order-marker
+      - id: name-tests-test
+        args: [--pytest-test-first]
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, --severity-level, medium]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^(src/|main\.py)
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.13.0-beta
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3009]
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+        args: [--fix, --disable, MD013, --disable, MD033]
+
+exclude: |
+  (?x)^(
+    .*\.egg-info/.*|
+    \.git/.*|
+    \.mypy_cache/.*|
+    \.pytest_cache/.*|
+    \.ruff_cache/.*|
+    __pycache__/.*|
+    build/.*|
+    dist/.*|
+    data/.*|
+    logs/.*|
+    .*\.db$|
+    .*\.sqlite$|
+    uv\.lock$
+  )
+
+default_language_version:
+  python: python3.11
