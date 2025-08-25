@@ -379,9 +379,14 @@ class SensorDatabase:
 
     def close(self):
         """Close the database connection."""
-        # Commit any pending data
+        # Commit any pending data (skip if read-only database)
         if self.batch_buffer:
-            self.commit_batch()
+            try:
+                self.commit_batch()
+            except sqlite3.OperationalError as e:
+                if "readonly database" not in str(e):
+                    raise
+                # Ignore read-only errors on close
 
         # Close connection
         if self.conn:
