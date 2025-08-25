@@ -147,7 +147,7 @@ class DatabaseConnectionManager:
         self._shutdown_handlers_registered = False
         self._checkpoint_lock = threading.Lock()
         self._last_checkpoint_time = time.time()
-        self._checkpoint_interval = 5  # Checkpoint/commit every 5 seconds for external visibility
+        self._checkpoint_interval = 10  # Checkpoint every 10 seconds to reduce read conflicts
 
         # Check if DELETE mode is explicitly requested via environment variable
         # Default is WAL mode for better performance
@@ -177,11 +177,12 @@ class DatabaseConnectionManager:
         ]
 
         if journal_mode == "WAL":
-            # Add WAL-specific pragmas for better performance
+            # Add WAL-specific pragmas for better performance and concurrent reads
             self.pragmas.extend(
                 [
                     "PRAGMA wal_autocheckpoint=1000;",  # Checkpoint every 1000 pages
                     "PRAGMA wal_checkpoint(TRUNCATE);",  # Initial checkpoint
+                    "PRAGMA read_uncommitted=0;",  # Ensure read consistency
                 ]
             )
 
@@ -462,8 +463,8 @@ class SensorDatabase:
         abs_db_path = os.path.abspath(self.db_path)  # Use a consistent variable for absolute path
         logging.info(f"Database path: {abs_db_path}")
         self.batch_buffer = []
-        self.batch_size = 20  # Batch after 20 writes for timely visibility
-        self.batch_timeout = 5.0  # Commit every 5 seconds for external readers
+        self.batch_size = 50  # Larger batches reduce write frequency and read conflicts
+        self.batch_timeout = 10.0  # Commit every 10 seconds for consistent read windows
         self.last_batch_time = time.time()
         self.batch_insert_count = 0
         self.insert_count = 0
@@ -843,7 +844,7 @@ class SensorDatabase:
         def periodic_commit():
             """Background thread to ensure data visibility for external readers."""
             while self._commit_thread_running:
-                time.sleep(5.0)  # Check every 5 seconds
+                time.sleep(10.0)  # Check every 10 seconds to reduce conflicts
                 try:
                     with self._commit_lock:
                         # Check if there's uncommitted data

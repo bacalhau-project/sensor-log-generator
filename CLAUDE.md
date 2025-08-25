@@ -69,9 +69,12 @@ The system uses a nested identity format:
 - **Dynamic reloading is now required** - monitoring and dynamic_reloading are automatically enabled
 - **WAL mode is the default** - the database uses WAL mode unless SENSOR_WAL=false is set
 - **No legacy support** - only the nested identity format is supported
+- **Database commits every 10 seconds** - provides consistent read windows
+- **Always use read-only mode for reading**: `sqlite3 "file:data/sensor_data.db?mode=ro"`
 
 ## Development Guidelines  
 - Always use ruff for python lint checking
 - Always use uv, instead of python, when writing python scripts
 - Make sure each CLI line is correctly terminated or has a \ for continuation at 80 characters
 - Ensure database mode is logged at startup
+- Use read-only connections when reading from the database

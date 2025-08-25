@@ -398,6 +398,8 @@ Different manufacturers and firmware versions affect anomaly rates:
 
 ## 📊 Data Output
 
+> **Note**: For detailed testing and monitoring instructions, see [TESTING_DATABASE.md](TESTING_DATABASE.md)
+
 ### Database Schema
 
 The SQLite database stores comprehensive sensor data:
@@ -471,6 +473,133 @@ When JSON logging is enabled:
     "firmware": "1.4"
   }
 }
+
+## 📖 Reading from the Database Safely
+
+The simulator writes continuously to the SQLite database. To read without conflicts, use read-only mode:
+
+### Bash (Command Line)
+
+```bash
+# Safe one-liner monitoring script
+while true; do echo "[$(date '+%H:%M:%S')] $(sqlite3 "file:data/sensor_data.db?mode=ro" "SELECT COUNT(*) FROM sensor_readings;" 2>/dev/null || echo "busy")"; sleep 2; done
+
+# Single query with read-only mode
+sqlite3 "file:data/sensor_data.db?mode=ro" "SELECT COUNT(*) FROM sensor_readings;"
+
+# Query with timeout for busy handling
+sqlite3 data/sensor_data.db "PRAGMA busy_timeout=2000; SELECT COUNT(*) FROM sensor_readings;"
+```
+
+### Python
+
+```python
+import sqlite3
+import time
+from contextlib import contextmanager
+
+@contextmanager
+def get_readonly_connection(db_path="data/sensor_data.db", timeout=30.0):
+    """Get a safe read-only connection to the database."""
+    conn = None
+    try:
+        # Open in read-only mode
+        conn = sqlite3.connect(
+            f"file:{db_path}?mode=ro",
+            uri=True,
+            timeout=timeout
+        )
+        # Set to query-only for extra safety
+        conn.execute("PRAGMA query_only=1;")
+        yield conn
+    finally:
+        if conn:
+            conn.close()
+
+# Example usage
+def monitor_database():
+    while True:
+        try:
+            with get_readonly_connection() as conn:
+                cursor = conn.cursor()
+                count = cursor.execute("SELECT COUNT(*) FROM sensor_readings").fetchone()[0]
+                print(f"[{time.strftime('%H:%M:%S')}] Readings: {count}")
+        except sqlite3.OperationalError as e:
+            print(f"[{time.strftime('%H:%M:%S')}] Database busy: {e}")
+        time.sleep(2)
+
+# Simple query
+with get_readonly_connection() as conn:
+    readings = conn.execute("SELECT * FROM sensor_readings ORDER BY timestamp DESC LIMIT 10").fetchall()
+```
+
+### JavaScript (Node.js)
+
+```javascript
+const sqlite3 = require('sqlite3').verbose();
+
+// Safe read-only connection
+function getReadOnlyConnection(dbPath = 'data/sensor_data.db') {
+    return new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+        if (err) {
+            console.error('Database connection failed:', err.message);
+        }
+    });
+}
+
+// Monitor function
+function monitorDatabase() {
+    const db = getReadOnlyConnection();
+    
+    setInterval(() => {
+        db.get("SELECT COUNT(*) as count FROM sensor_readings", (err, row) => {
+            if (err) {
+                console.log(`[${new Date().toLocaleTimeString()}] Database busy`);
+            } else {
+                console.log(`[${new Date().toLocaleTimeString()}] Readings: ${row.count}`);
+            }
+        });
+    }, 2000);
+}
+
+// Async/await with better-sqlite3 (recommended)
+const Database = require('better-sqlite3');
+
+function safeQuery() {
+    try {
+        const db = new Database('data/sensor_data.db', { 
+            readonly: true,
+            fileMustExist: true 
+        });
+        
+        const count = db.prepare('SELECT COUNT(*) as count FROM sensor_readings').get();
+        console.log(`Readings: ${count.count}`);
+        
+        db.close();
+    } catch (error) {
+        console.error('Query failed:', error);
+    }
+}
+```
+
+### Best Practices for Concurrent Reading
+
+1. **Always use read-only mode** when reading from the database
+2. **Set appropriate timeouts** to handle busy states (5-30 seconds recommended)
+3. **Implement retry logic** for transient errors
+4. **Don't keep connections open** longer than necessary
+5. **Use PRAGMA query_only=1** for extra safety in critical applications
+6. **Note**: Database commits every 10 seconds, so readers have consistent windows
+
+### Error Handling
+
+Common errors and solutions:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "database is locked" | Write in progress | Add timeout and retry |
+| "file is not a database" | Checkpoint occurring | Retry after brief delay |
+| "no such table" | Database not initialized | Wait for simulator to start |
 
 ### Analyzing the Data
 

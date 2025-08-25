@@ -13,7 +13,7 @@ if [ ! -f "$DB_PATH" ]; then
 fi
 
 echo "📊 Database Summary:"
-sqlite3 "$DB_PATH" <<EOF
+sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
 SELECT 
@@ -27,7 +27,7 @@ EOF
 
 echo ""
 echo "🏭 Readings by Manufacturer:"
-sqlite3 "$DB_PATH" <<EOF
+sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
 SELECT 
@@ -40,7 +40,7 @@ EOF
 
 echo ""
 echo "⚠️  Anomaly Types:"
-sqlite3 "$DB_PATH" <<EOF
+sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
 SELECT 
@@ -53,7 +53,7 @@ EOF
 
 echo ""
 echo "📈 Hourly Statistics:"
-sqlite3 "$DB_PATH" <<EOF
+sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
 SELECT 

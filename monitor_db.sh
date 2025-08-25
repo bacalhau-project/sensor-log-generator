@@ -18,9 +18,9 @@ while true; do
         ls -lh "$DB_PATH" | awk '{print "  Size: " $5 "\n  Modified: " $6 " " $7 " " $8}'
         echo ""
         
-        # Record counts
+        # Record counts (using read-only mode)
         echo "📊 Record Statistics:"
-        sqlite3 "$DB_PATH" 2>/dev/null <<EOF
+        sqlite3 "file:$DB_PATH?mode=ro" 2>/dev/null <<EOF
 .mode column
 .headers on
 SELECT 
@@ -31,9 +31,9 @@ FROM sensor_readings;
 EOF
         echo ""
         
-        # Recent readings
+        # Recent readings (using read-only mode)
         echo "📈 Last 5 Readings:"
-        sqlite3 "$DB_PATH" 2>/dev/null <<EOF
+        sqlite3 "file:$DB_PATH?mode=ro" 2>/dev/null <<EOF
 .mode column
 .headers on
 SELECT 
@@ -47,10 +47,10 @@ ORDER BY timestamp DESC
 LIMIT 5;
 EOF
         
-        # Anomaly rate
+        # Anomaly rate (using read-only mode)
         echo ""
         echo "🎯 Anomaly Rate:"
-        sqlite3 "$DB_PATH" 2>/dev/null <<EOF
+        sqlite3 "file:$DB_PATH?mode=ro" 2>/dev/null <<EOF
 .mode column
 SELECT 
     printf('%.2f%%', 100.0 * SUM(anomaly_flag) / COUNT(*)) as rate
