@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from datetime import UTC, datetime
+from zipfile import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
@@ -81,9 +82,9 @@ class SensorSimulator:
             raise ValueError(msg)
 
         # Ensure the database directory exists
-        db_dir = os.path.dirname(db_path)
+        db_dir = Path.dirname(db_path)
         if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
+            db_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize database
         # By default, delete old database to avoid corruption issues from unclean shutdowns
@@ -100,9 +101,9 @@ class SensorSimulator:
         # Set up logging to file (using config from ConfigManager)
         log_file = self.config_manager.get_logging_config().get("file")
         if log_file:
-            log_dir = os.path.dirname(log_file)
+            log_dir = Path.dirname(log_file)
             if log_dir:
-                os.makedirs(log_dir, exist_ok=True)
+                log_dir.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(
                 logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -258,7 +259,6 @@ class SensorSimulator:
                 "voltage": self._generate_parameter_value("voltage"),
                 "status_code": 0,  # 0 = normal operation
             }
-            return reading
         except Exception as e:
             logger.exception(f"Error generating normal reading: {e}")
             # Return a fallback reading with default values
@@ -269,6 +269,8 @@ class SensorSimulator:
                 "voltage": 12.0,
                 "status_code": 0,
             }
+        else:
+            return reading
 
     def _generate_parameter_value(self, param_name):
         """Generate a value for a specific parameter based on its configuration.
@@ -298,12 +300,12 @@ class SensorSimulator:
 
             # Clamp value within min/max range
             value = max(min_val, min(value, max_val))
-
-            return value
         except Exception as e:
             logger.exception(f"Error generating value for {param_name}: {e}")
             # Return mean value as fallback
             return self.normal_params.get(param_name, {}).get("mean", 0)
+        else:
+            return value
 
     def _get_memory_usage(self):
         """Get current memory usage in MB.
@@ -353,10 +355,10 @@ class SensorSimulator:
             # Add growth information to memory usage dict
             self.memory_usage["growth_mb"] = growth_mb
             self.memory_usage["growth_percent"] = growth_percent
-
-            return self.memory_usage
         except Exception as e:
             logger.exception(f"Error checking memory usage: {e}")
+            return self.memory_usage
+        else:
             return self.memory_usage
 
     def handle_config_updated(self):
@@ -564,7 +566,6 @@ class SensorSimulator:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"{self.readings_count} sensor readings created. ({current_time})")
 
-            return True
         except Exception as e:
             self.error_count += 1
             self.consecutive_errors += 1
@@ -611,14 +612,12 @@ class SensorSimulator:
                         logger.info(f"Corrupted database backed up to: {backup_path}")
 
                         # Remove corrupted database
-                        os.remove(self.database.db_path)
+                        self.database.db_path.unlink(missing_ok=True)
 
                         # Also remove journal files
                         for suffix in ["-journal", "-wal", "-shm"]:
-                            journal_path = f"{self.database.db_path}{suffix}"
-                            if os.path.exists(journal_path):
-                                os.remove(journal_path)
-                                logger.debug(f"Removed {journal_path}")
+                            journal_path = self.database.db_path.with_suffix(suffix)
+                            journal_path.unlink(missing_ok=True)
 
                         # Create new database
                         logger.info("Creating fresh database...")
@@ -632,12 +631,13 @@ class SensorSimulator:
 
                         # Reset error counters since we recovered
                         self.consecutive_errors = 0
-                        return True
-
                     except Exception as recovery_error:
                         logger.exception(f"Failed to recover from corruption: {recovery_error}")
                         logger.critical("DATABASE CORRUPTION - unable to recover, stopping")
                         return False
+                    else:
+                        logger.info("Database recovery successful, continuing operation")
+                        return True
                 else:
                     logger.critical(
                         "DATABASE CORRUPTION persists after recovery attempt - stopping"
@@ -656,7 +656,8 @@ class SensorSimulator:
             logger.warning(
                 f"Continuing after error {self.consecutive_errors}/{self.max_consecutive_errors}"
             )
-            return True  # Return True to continue despite the error
+        else:
+            return True
 
     def _start_debug_reporter(self):
         """Start a background thread that reports detailed status every 5 seconds in debug mode."""

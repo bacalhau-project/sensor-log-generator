@@ -7,11 +7,11 @@
 # ]
 # ///
 
-import os
 import sqlite3
 import tempfile
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +24,7 @@ class TestDatabaseReadOperations:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test_read.db")
+        self.db_path = Path.join(self.temp_dir.name, "test_read.db")
         self.db = SensorDatabase(self.db_path)
 
     def teardown_method(self):
@@ -371,10 +371,10 @@ class TestDatabaseEdgeCases:
 
     def test_corrupted_database_recovery(self):
         """Test handling of corrupted database."""
-        db_path = os.path.join(self.temp_dir.name, "corrupted.db")
+        db_path = Path.join(self.temp_dir.name, "corrupted.db")
 
         # Create a corrupted database file
-        with open(db_path, "wb") as f:
+        with Path.open(db_path, "wb") as f:
             f.write(b"This is not a valid SQLite database")
 
         # Attempt to open corrupted database
@@ -383,7 +383,7 @@ class TestDatabaseEdgeCases:
 
     def test_missing_database_file(self):
         """Test handling when database file is missing."""
-        db_path = os.path.join(self.temp_dir.name, "missing.db")
+        db_path = Path.join(self.temp_dir.name, "missing.db")
 
         # Create database
         db = SensorDatabase(db_path)
@@ -394,7 +394,7 @@ class TestDatabaseEdgeCases:
         db.close()
 
         # Delete database file
-        os.remove(db_path)
+        db_path.unlink()
 
         # Try to open with preserve_existing_db=True
         db2 = SensorDatabase(db_path, preserve_existing_db=True)
@@ -404,7 +404,7 @@ class TestDatabaseEdgeCases:
 
     def test_read_only_database(self):
         """Test handling of read-only database."""
-        db_path = os.path.join(self.temp_dir.name, "readonly.db")
+        db_path = Path.join(self.temp_dir.name, "readonly.db")
 
         # Create database
         db = SensorDatabase(db_path)
@@ -415,7 +415,7 @@ class TestDatabaseEdgeCases:
         db.close()
 
         # Make database read-only
-        os.chmod(db_path, 0o444)
+        Path.chmod(db_path, 0o444)
 
         # Try to open read-only database
         try:
@@ -438,11 +438,11 @@ class TestDatabaseEdgeCases:
             db2.close()
         finally:
             # Restore write permissions for cleanup
-            os.chmod(db_path, 0o644)
+            Path.chmod(db_path, 0o644)
 
     def test_database_locked_error(self):
         """Test handling of database locked errors."""
-        db_path = os.path.join(self.temp_dir.name, "locked.db")
+        db_path = Path(self.temp_dir.name) / "locked.db"
 
         db1 = SensorDatabase(db_path)
 
@@ -470,7 +470,7 @@ class TestDatabaseEdgeCases:
 
     def test_very_large_batch(self):
         """Test handling of very large batch inserts."""
-        db_path = os.path.join(self.temp_dir.name, "large_batch.db")
+        db_path = Path(self.temp_dir.name) / "large_batch.db"
         db = SensorDatabase(db_path)
 
         # Insert a very large batch
@@ -496,7 +496,7 @@ class TestDatabaseEdgeCases:
 
     def test_null_values_handling(self):
         """Test handling of null/None values in optional fields."""
-        db_path = os.path.join(self.temp_dir.name, "null_values.db")
+        db_path = Path(self.temp_dir.name) / "null_values.db"
         db = SensorDatabase(db_path)
 
         # Insert reading with minimal required fields
@@ -532,7 +532,7 @@ class TestDatabaseEdgeCases:
 
     def test_unicode_and_special_characters(self):
         """Test handling of Unicode and special characters."""
-        db_path = os.path.join(self.temp_dir.name, "unicode.db")
+        db_path = Path(self.temp_dir.name) / "unicode.db"
         db = SensorDatabase(db_path)
 
         # Insert reading with Unicode characters
@@ -564,7 +564,7 @@ class TestDatabaseEdgeCases:
 
     def test_timestamp_edge_cases(self):
         """Test handling of edge case timestamps."""
-        db_path = os.path.join(self.temp_dir.name, "timestamp_edge.db")
+        db_path = Path(self.temp_dir.name) / "timestamp_edge.db"
         db = SensorDatabase(db_path)
 
         # Test very old timestamp (1970)

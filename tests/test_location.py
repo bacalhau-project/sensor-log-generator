@@ -3,10 +3,10 @@ import json
 # Suppress most logging output during tests
 import logging
 import math
-import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -15,10 +15,10 @@ from main import process_identity_and_location  # Import from main.py
 from src.location import LocationGenerator
 
 # Add project root and src directory to Python path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SRC_DIR = os.path.join(PROJECT_ROOT, "src")
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, SRC_DIR)
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+SRC_DIR = PROJECT_ROOT / "src"
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(SRC_DIR))
 
 logging.basicConfig(level=logging.CRITICAL)
 
@@ -35,8 +35,8 @@ class TestLocationGenerator(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _create_temp_cities_file(self, cities_data):
-        cities_file_path = os.path.join(self.temp_dir.name, "temp_cities.json")
-        with open(cities_file_path, "w") as f:
+        cities_file_path = Path(self.temp_dir.name) / "temp_cities.json"
+        with cities_file_path.open("w") as f:
             json.dump({"cities": cities_data}, f)
         return cities_file_path
 
@@ -107,7 +107,7 @@ class TestLocationGenerator(unittest.TestCase):
             "enabled": True,
             "number_of_cities": 2,
             "gps_variation": 0,  # No variation for predictable testing of base coords
-            "cities_file": os.path.basename(temp_cities_file),  # Relative path to file in temp_dir
+            "cities_file": temp_cities_file.name,  # Relative path to file in temp_dir
         }
 
         # LocationGenerator constructs path relative to its own file, so we need to adjust
@@ -173,7 +173,7 @@ class TestLocationGenerator(unittest.TestCase):
             assert city_name in ["CityPopHigh", "CityPopMid"]
 
     def test_generate_location_enabled_no_cities_file_generates_random(self):
-        non_existent_file = os.path.join(self.temp_dir.name, "no_such_cities.json")
+        non_existent_file = Path(self.temp_dir.name) / "no_such_cities.json"
         config = {
             "enabled": True,
             "number_of_cities": 3,
@@ -243,8 +243,8 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
             }
             for i, (name, data) in enumerate(cities_data_dict.items())
         ]
-        cities_file_path = os.path.join(self.temp_dir.name, "temp_cities_for_main.json")
-        with open(cities_file_path, "w") as f:
+        cities_file_path = Path(self.temp_dir.name) / "temp_cities_for_main.json"
+        with cities_file_path.open("w") as f:
             json.dump({"cities": cities_list}, f)
         return cities_file_path
 

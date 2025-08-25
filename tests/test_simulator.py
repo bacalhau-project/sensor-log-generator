@@ -1,11 +1,11 @@
-import os
 import sqlite3
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 # Add src directory to Python path to allow importing modules from src
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 import pytest
 
@@ -63,30 +63,25 @@ class TestSensorSimulator(unittest.TestCase):
     def setUp(self):
         # Create a temporary directory for db and logs
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test_sensor_data.db")
+        self.db_path = Path(self.temp_dir.name) / "test_sensor_data.db"
 
         # Ensure log directory exists if logging to file
         log_file_path = get_minimal_config(self.db_path)["logging"]["file"]
         if log_file_path:
-            log_dir = os.path.dirname(log_file_path)
-            if log_dir and not os.path.exists(
-                log_dir
-            ):  # Handle cases where log_file is just a name
-                os.makedirs(log_dir, exist_ok=True)
-            elif not log_dir and not os.path.exists(
-                os.path.join(self.temp_dir.name, log_dir if log_dir else "")
-            ):
-                # if log_dir is empty, create log file in temp_dir
-                self.log_path = os.path.join(self.temp_dir.name, log_file_path)
+            log_dir = Path(log_file_path).parent
+            if log_dir and not log_dir.exists():  # Handle cases where log_file is just a name
+                log_dir.mkdir(parents=True, exist_ok=True)
+            elif not log_dir and not log_dir.exists():
+                self.log_path = Path(self.temp_dir.name) / log_file_path
 
     def tearDown(self):
         self.temp_dir.cleanup()
         # Clean up log file if created
         log_file_path = get_minimal_config(self.db_path)["logging"]["file"]
-        if log_file_path and os.path.exists(log_file_path):
-            os.remove(log_file_path)
-        elif hasattr(self, "log_path") and os.path.exists(self.log_path):
-            os.remove(self.log_path)
+        if log_file_path and Path(log_file_path).exists():
+            Path(log_file_path).unlink()
+        elif hasattr(self, "log_path") and self.log_path.exists():
+            self.log_path.unlink()
 
     def test_simulator_run_with_valid_identity_and_db_write(self):
         config = get_minimal_config(self.db_path)
@@ -288,7 +283,7 @@ class TestSensorSimulator(unittest.TestCase):
         config = get_minimal_config(invalid_db_path)
         identity = get_minimal_identity()
 
-        with pytest.raises(Exception):
+        with pytest.raises(sqlite3.OperationalError):
             config_manager = ConfigManager(config=config, identity=identity)
             SensorSimulator(config_manager=config_manager)
 

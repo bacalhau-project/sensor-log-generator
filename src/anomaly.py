@@ -173,10 +173,9 @@ class AnomalyGenerator:
             # More prone to pattern anomalies
             if AnomalyType.PATTERN in enabled_types:
                 enabled_types[AnomalyType.PATTERN] *= 1.5
-        elif self.model == "EnvMonitor-5000":
+        elif self.model == "EnvMonitor-5000" and AnomalyType.SPIKE in enabled_types:
             # More prone to spike anomalies
-            if AnomalyType.SPIKE in enabled_types:
-                enabled_types[AnomalyType.SPIKE] *= 1.5
+            enabled_types[AnomalyType.SPIKE] *= 1.5
 
         # Adjust weights based on firmware
         if self.firmware_version == "1.4" or self.firmware_version == "1.4.0":

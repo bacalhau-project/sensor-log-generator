@@ -1,7 +1,7 @@
-import os
 import sqlite3
 import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -81,7 +81,7 @@ class TestDatabaseConnectionManager:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test.db")
+        self.db_path = Path.join(self.temp_dir.name, "test.db")
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -183,7 +183,7 @@ class TestSensorDatabase:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test_sensor.db")
+        self.db_path = Path.join(self.temp_dir.name, "test_sensor.db")
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -194,7 +194,7 @@ class TestSensorDatabase:
         db = SensorDatabase(self.db_path)
 
         # Verify database file exists
-        assert os.path.exists(self.db_path)
+        assert Path.exists(self.db_path)
 
         # Verify table exists
         with db.conn_manager.get_cursor() as cursor:
@@ -466,7 +466,7 @@ class TestSensorDatabase:
         # Create database with invalid path to trigger errors
         invalid_path = "/invalid/path/to/database.db"
 
-        with pytest.raises(Exception):
+        with pytest.raises(sqlite3.OperationalError):
             SensorDatabase(invalid_path)
 
     def test_memory_database(self):

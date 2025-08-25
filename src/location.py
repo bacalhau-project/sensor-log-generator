@@ -1,7 +1,7 @@
 import json
 import logging
-import os
 import random
+from pathlib import Path
 
 
 class LocationGenerator:
@@ -41,14 +41,14 @@ class LocationGenerator:
         """
         try:
             # Get the absolute path to the cities file
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            cities_file_path = os.path.join(base_dir, self.cities_file)
+            base_dir = Path.dirname(Path.dirname(Path.abspath(__file__)))
+            cities_file_path = Path.join(base_dir, self.cities_file)
             self.logger.info(f"Looking for cities file at: {cities_file_path}")
 
             # Try to load from file if it exists
-            if os.path.exists(cities_file_path):
+            if cities_file_path.exists():
                 self.logger.info(f"Found cities file at {cities_file_path}")
-                with open(cities_file_path) as f:
+                with cities_file_path.open() as f:
                     cities_data = json.load(f)
                     # The file has a top-level 'cities' key containing an array
                     cities_list = cities_data.get("cities", [])

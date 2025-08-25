@@ -7,12 +7,12 @@
 # ]
 # ///
 
-import os
 import signal
 import sqlite3
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -25,7 +25,7 @@ class TestDatabaseCheckpointing:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test_checkpoint.db")
+        self.db_path = Path.join(self.temp_dir.name, "test_checkpoint.db")
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -177,9 +177,8 @@ class TestDatabaseCheckpointing:
         db = SensorDatabase(self.db_path)
 
         # Attempt to execute invalid SQL
-        with pytest.raises(sqlite3.OperationalError):
-            with db.conn_manager.get_cursor() as cursor:
-                cursor.execute("INSERT INTO nonexistent_table VALUES (1, 2, 3)")
+        with pytest.raises(sqlite3.OperationalError) and db.conn_manager.get_cursor() as cursor:
+            cursor.execute("INSERT INTO nonexistent_table VALUES (1, 2, 3)")
 
         # Verify database is still healthy
         assert db.is_healthy()
@@ -385,7 +384,7 @@ class TestCheckpointIntegration:
     def test_checkpoint_integration_with_database(self):
         """Test database checkpointing functionality in isolation."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = os.path.join(temp_dir, "integration_test.db")
+            db_path = Path.join(temp_dir, "integration_test.db")
             db = SensorDatabase(db_path)
 
             # Simulate inserting readings over time

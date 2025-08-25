@@ -6,10 +6,10 @@
 # ]
 # ///
 
-import os
 import sqlite3
 import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +22,7 @@ class TestDatabaseCorruptionHandling:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "test_corruption.db")
+        self.db_path = Path.join(self.temp_dir.name, "test_corruption.db")
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -51,7 +51,7 @@ class TestDatabaseCorruptionHandling:
     def test_corrupted_database_recreated(self):
         """Test that a corrupted database is detected and recreated."""
         # Create a corrupted database file
-        with open(self.db_path, "wb") as f:
+        with Path.open(self.db_path, "wb") as f:
             f.write(b"This is not a valid SQLite database file!\x00" * 100)
 
         # Try to open with preserve_existing_db=True
@@ -160,7 +160,7 @@ class TestDatabaseCorruptionHandling:
 
         # Corrupt the database file more severely
         # Just corrupting a few bytes might not trigger integrity check failure
-        with open(self.db_path, "r+b") as f:
+        with Path.open(self.db_path, "r+b") as f:
             # Corrupt multiple parts of the file
             f.seek(0)
             header = f.read(16)
@@ -205,14 +205,14 @@ class TestDatabaseCorruptionHandling:
         shm_path = f"{self.db_path}-shm"
 
         # Create fake WAL/SHM files if they don't exist
-        open(wal_path, "a").close()
-        open(shm_path, "a").close()
+        Path.open(wal_path, "a").close()
+        Path.open(shm_path, "a").close()
 
-        assert os.path.exists(wal_path)
-        assert os.path.exists(shm_path)
+        assert Path.exists(wal_path)
+        assert Path.exists(shm_path)
 
         # Corrupt the main database
-        with open(self.db_path, "wb") as f:
+        with Path.open(self.db_path, "wb") as f:
             f.write(b"CORRUPTED DATABASE")
 
         # Reopen with preserve - should delete all files
@@ -227,7 +227,7 @@ class TestDatabaseCorruptionHandling:
     def test_empty_database_recreated(self):
         """Test that an empty file is treated as corrupted."""
         # Create an empty file
-        open(self.db_path, "w").close()
+        Path.open(self.db_path, "w").close()
 
         # Should detect as corrupted and recreate
         db = SensorDatabase(self.db_path, preserve_existing_db=True)
@@ -274,7 +274,7 @@ class TestDatabaseCorruptionHandling:
         logging.getLogger("SensorDatabase").setLevel(logging.DEBUG)
 
         # Create a corrupted database
-        with open(self.db_path, "wb") as f:
+        with Path.open(self.db_path, "wb") as f:
             f.write(b"Not a database")
 
         # Open with preserve - should log detailed info

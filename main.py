@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.config import ConfigManager
 from src.database import SensorReadingSchema
+from src.error_utils import raise_with_context
 from src.llm_docs import print_llm_documentation
 from src.location import LocationGenerator
 from src.simulator import SensorSimulator
@@ -277,13 +279,17 @@ class IdentityData(BaseModel):
 
 def load_config(config_path: str) -> dict:
     """Load configuration from YAML file and validate its structure."""
+    from src.error_utils import raise_with_context
+
     try:
-        with open(config_path) as f:
+        with Path.open(config_path) as f:
             raw_config_data = yaml.safe_load(f)
         if not isinstance(raw_config_data, dict):
             logging.error(f"Config file {config_path} content must be a dictionary.")
-            msg = "Config file content must be a dictionary."
-            raise ValueError(msg)
+            raise_with_context(
+                "Config file content must be a dictionary.",
+                TypeError("Config file content must be a dictionary."),
+            )
 
         # Process config to ensure required fields
         config = process_config(raw_config_data)
@@ -297,50 +303,52 @@ def load_config(config_path: str) -> dict:
             logging.warning("Dynamic reloading is required - enabling it")
             config.setdefault("dynamic_reloading", {})["enabled"] = True
 
-        return config
-
-    except FileNotFoundError:
-        logging.error(f"Configuration file not found: {config_path}")
-        raise
+    except FileNotFoundError as e:
+        logging.exception(f"Configuration file not found: {config_path}")
+        raise_with_context(f"Configuration file not found: {config_path}", e)
     except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML from configuration file {config_path}: {e}")
-        raise
+        logging.exception(f"Error parsing YAML from configuration file {config_path}: {e}")
+        raise_with_context(f"Error parsing YAML from configuration file {config_path}", e)
     except ValidationError as e:
-        logging.error(f"Invalid configuration in {config_path}:\n{e}")
-        msg = f"Invalid configuration: {e}"
-        raise ValueError(msg)
+        logging.exception(f"Invalid configuration in {config_path}:\n{e}")
+        raise_with_context(f"Invalid configuration: {e}", e)
     except Exception as e:
-        logging.error(f"Error loading configuration file {config_path}: {e!s}")
-        raise
+        logging.exception(f"Error loading configuration file {config_path}: {e!s}")
+        raise_with_context(f"Error loading configuration file {config_path}: {e!s}", e)
+    else:
+        return config
 
 
 def load_identity(identity_path: str) -> dict:
     """Load sensor identity from JSON file and validate its structure using Pydantic."""
+    from src.error_utils import raise_with_context
+
     try:
-        with open(identity_path) as f:
+        with Path.open(identity_path) as f:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
             logging.error(f"Identity file {identity_path} content must be a dictionary.")
-            msg = "Identity file content must be a dictionary."
-            raise ValueError(msg)
+            raise_with_context(
+                "Identity file content must be a dictionary.",
+                TypeError("Identity file content must be a dictionary."),
+            )
 
         # Validate and parse using Pydantic model
         identity_data_model = IdentityData(**raw_identity_data)
         return identity_data_model.model_dump()  # Convert Pydantic model to dict
 
-    except FileNotFoundError:
-        logging.error(f"Identity file not found: {identity_path}")
-        raise
+    except FileNotFoundError as e:
+        logging.exception(f"Identity file not found: {identity_path}")
+        raise_with_context(f"Identity file not found: {identity_path}", e)
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from identity file {identity_path}: {e}")
-        raise
+        logging.exception(f"Error decoding JSON from identity file {identity_path}: {e}")
+        raise_with_context(f"Error decoding JSON from identity file {identity_path}", e)
     except ValidationError as e:
-        logging.error(f"Invalid identity data in {identity_path}:\n{e}")
-        msg = f"Invalid identity data: {e}"
-        raise ValueError(msg)
+        logging.exception(f"Invalid identity data in {identity_path}:\n{e}")
+        raise_with_context(f"Invalid identity data: {e}", e)
     except Exception as e:
-        logging.error(f"Error loading identity file {identity_path}: {e}")
-        raise
+        logging.exception(f"Error loading identity file {identity_path}: {e}")
+        raise_with_context(f"Error loading identity file {identity_path}: {e}", e)
 
 
 def generate_sensor_id(identity: dict) -> str:
@@ -610,7 +618,7 @@ def process_identity_and_location(identity_data: dict, app_config: dict) -> dict
             logger.info(f"Generated sensor ID: {generated_id}")
         except ValueError as e:
             # This could happen if generate_sensor_id raises an error (e.g. location becomes invalid unexpectedly)
-            logger.error(f"Failed to generate sensor ID: {e}")
+            logger.exception(f"Failed to generate sensor ID: {e}")
             raise  # Re-raise to be caught by main
     else:
         # Ensure both fields are set for compatibility
@@ -645,9 +653,9 @@ def setup_logging(config):
     # Add file handler if log file is specified
     if log_file:
         # Ensure the log directory exists
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        log_dir = Path(log_file).parent
+        if log_dir and not log_dir.exists():
+            log_dir.mkdir(parents=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(logging.Formatter(log_format))
         logger.addHandler(file_handler)
@@ -668,8 +676,8 @@ def file_watcher_thread(
     """
     logger = logging.getLogger(__name__)
     last_mtime = None
-    if os.path.exists(file_path):
-        last_mtime = os.path.getmtime(file_path)
+    if Path(file_path).exists():
+        last_mtime = Path(file_path).stat().st_mtime
     else:
         logger.warning(
             f"File watcher: Initial file not found at {file_path}. Will watch for creation."
@@ -677,7 +685,7 @@ def file_watcher_thread(
 
     while not stop_event.is_set():
         try:
-            if not os.path.exists(file_path):
+            if not Path(file_path).exists():
                 if last_mtime is not None:  # File was deleted
                     logger.warning(f"File watcher: Watched file {file_path} has been deleted.")
                     last_mtime = None  # Reset mtime so recreation is detected
@@ -685,7 +693,7 @@ def file_watcher_thread(
                 stop_event.wait(check_interval)
                 continue
 
-            current_mtime = os.path.getmtime(file_path)
+            current_mtime = Path(file_path).stat().st_mtime
             if last_mtime is None or current_mtime > last_mtime:
                 if last_mtime is None:
                     logger.info(f"File watcher: File {file_path} has been created/appeared.")
@@ -733,18 +741,16 @@ def file_watcher_thread(
 
                     last_mtime = current_mtime
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         f"File watcher: Error reloading {file_path}: {e}. Using previous configuration for this source."
                     )
                     # last_mtime should not be updated here, so it tries again next interval
                     # unless the file truly hasn't changed, in which case an mtime update is needed
-                    if os.path.exists(file_path):  # If error was not file not found
-                        last_mtime = os.path.getmtime(
-                            file_path
-                        )  # Avoid loop if file is bad but mtime same
+                    if Path(file_path).exists():  # If error was not file not found
+                        last_mtime = Path(file_path).stat().st_mtime
 
         except Exception as e:
-            logger.error(f"File watcher: Unexpected error for {file_path}: {e}")
+            logger.exception(f"File watcher: Unexpected error for {file_path}: {e}")
             # Avoid tight loop on unexpected errors
 
         # Use shorter intervals to be more responsive to shutdown
@@ -890,11 +896,11 @@ def main():
         )
         sys.exit(1)
 
-    if not os.path.isfile(config_file_path):
+    if not Path(config_file_path).is_file():
         print(f"Error: Config file not found at {config_file_path}", file=sys.stderr)
         sys.exit(1)
 
-    if not os.path.isfile(identity_file_path):
+    if not Path(identity_file_path).is_file():
         print(f"Error: Identity file not found at {identity_file_path}", file=sys.stderr)
         sys.exit(1)
 
@@ -934,13 +940,13 @@ def main():
             try:
                 simulator.stop()
             except Exception as e:
-                logging.error(f"Error stopping simulator: {e}")
+                logging.exception(f"Error stopping simulator: {e}")
 
         if stop_watcher_event:
             try:
                 stop_watcher_event.set()
             except Exception as e:
-                logging.error(f"Error stopping watchers: {e}")
+                logging.exception(f"Error stopping watchers: {e}")
 
         # Raise KeyboardInterrupt to break out of blocking calls
         if signal_count == 1:
@@ -970,7 +976,7 @@ def main():
         try:
             raw_identity = load_identity(identity_file_path)
         except Exception as e:
-            logging.error(
+            logging.exception(
                 f"Failed to load initial identity from {identity_file_path}. Exiting. Error: {e}"
             )
             sys.exit(1)
@@ -979,7 +985,9 @@ def main():
         try:
             initial_identity = process_identity_and_location(raw_identity, initial_config)
         except (ValueError, RuntimeError) as e:  # Catch errors from processing
-            logging.error(f"Failed to process initial identity or generate ID. Exiting. Error: {e}")
+            logging.exception(
+                f"Failed to process initial identity or generate ID. Exiting. Error: {e}"
+            )
             sys.exit(1)
 
         # Create ConfigManager with initial data
@@ -1066,7 +1074,7 @@ def main():
             reading_count = simulator.database.get_database_stats()["total_readings"]
             logging.info(f"✓ Database is accessible (contains {reading_count} readings)")
         except Exception as e:
-            logging.error(f"✗ Database health check failed: {e}")
+            logging.exception(f"✗ Database health check failed: {e}")
             msg = f"Database is not accessible: {e}"
             raise RuntimeError(msg)
 
@@ -1075,17 +1083,17 @@ def main():
             import shutil
 
             db_path = config_manager.get_database_config().get("path", "data/sensor_data.db")
-            db_dir = os.path.dirname(os.path.abspath(db_path))
+            db_dir = Path(db_path).parent
             stat = shutil.disk_usage(db_dir)
             free_gb = stat.free / (1024**3)
             min_required_gb = 0.1  # Require at least 100MB free
             if free_gb < min_required_gb:
                 msg = f"Insufficient disk space: {free_gb:.2f}GB free, need {min_required_gb}GB"
-                raise RuntimeError(msg)
+                raise_with_context(msg)
             logging.info(f"✓ Disk space available ({free_gb:.2f}GB free)")
         except Exception as e:
             if "Insufficient disk space" in str(e):
-                logging.error(f"✗ {e}")
+                logging.exception(f"✗ {e}")
                 raise
             logging.warning(f"⚠ Could not check disk space: {e}")
 

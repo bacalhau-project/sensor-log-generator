@@ -68,7 +68,7 @@ class TestMainIntegration:
         }
 
         config_file = temp_dirs["config"] / "test_config.yaml"
-        with open(config_file, "w") as f:
+        with Path.open(config_file, "w") as f:
             yaml.dump(config, f)
 
         return config_file
@@ -108,7 +108,7 @@ class TestMainIntegration:
         }
 
         identity_file = temp_dirs["config"] / "test_identity.json"
-        with open(identity_file, "w") as f:
+        with Path.open(identity_file, "w") as f:
             json.dump(identity, f)
 
         return identity_file
@@ -180,9 +180,10 @@ class TestMainIntegration:
 
     def test_database_writes_during_simulation(self, temp_dirs, test_config, test_identity):
         """Test that data is written to the database during simulation."""
-        # Create config manager
-        config_data = yaml.safe_load(open(test_config))
-        identity_data = json.load(open(test_identity))
+        with Path.open(test_config) as f:
+            config_data = yaml.safe_load(f)
+        with Path.open(test_identity) as f:
+            identity_data = json.load(f)
 
         config_mgr = ConfigManager(
             config=config_data,
@@ -385,9 +386,9 @@ class TestSignalHandling:
             "metadata": {"instance_id": "test", "sensor_type": "test"},
         }
 
-        with open(config_file, "w") as f:
+        with Path.open(config_file, "w") as f:
             yaml.dump(config, f)
-        with open(identity_file, "w") as f:
+        with Path.open(identity_file, "w") as f:
             json.dump(identity, f)
 
         # Start process

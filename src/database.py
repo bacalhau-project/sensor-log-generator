@@ -1,4 +1,5 @@
 import atexit
+import contextlib
 import logging
 import os
 import platform
@@ -11,10 +12,13 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import wraps
+from pathlib import Path
 from typing import Any
 
 import psutil
 from pydantic import BaseModel
+
+from .error_utils import raise_with_context
 
 
 # Define a Pydantic model for the sensor reading schema
@@ -77,23 +81,25 @@ def retry_on_error(max_retries=3, retry_delay=1.0):
             for attempt in range(max_retries + 1):
                 try:
                     # Check circuit breaker if this is a SensorDatabase method
-                    if hasattr(args[0], "_check_circuit_breaker"):
-                        if not args[0]._check_circuit_breaker():
-                            msg = "Circuit breaker is open, database operations suspended"
-                            raise sqlite3.OperationalError(msg)
+                    if (
+                        hasattr(args[0], "_check_circuit_breaker")
+                        and not args[0]._check_circuit_breaker()
+                    ):
+                        msg = "Circuit breaker is open, database operations suspended"
+                        raise_with_context(sqlite3.OperationalError(msg))
 
                     if debug_mode and attempt > 0:
                         logging.getLogger("SensorDatabase").debug(
                             f"Retry attempt {attempt + 1}/{max_retries + 1} for {func.__name__}"
                         )
 
-                    result = func(*args, **kwargs)
+                        result = func(*args, **kwargs)
 
-                    # Record success for circuit breaker
-                    if hasattr(args[0], "_record_circuit_success"):
-                        args[0]._record_circuit_success()
-
-                    return result
+                        # Record success for circuit breaker
+                        if hasattr(args[0], "_record_circuit_success"):
+                            args[0]._record_circuit_success()
+                    else:
+                        return result
                 except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                     last_exception = e
 
@@ -422,7 +428,7 @@ class SensorDatabase:
             self._log_debug_environment_info()
 
         # Handle deletion of existing database if not preserving
-        if self.db_path != ":memory:" and os.path.exists(self.db_path):
+        if self.db_path != ":memory:" and Path.exists(self.db_path):
             if not preserve_existing_db:
                 # Don't check integrity if we're deleting anyway - just delete it
                 self.logger.info(
@@ -461,7 +467,7 @@ class SensorDatabase:
                         f"Existing database at '{self.db_path}' passed integrity check."
                     )
 
-        abs_db_path = os.path.abspath(self.db_path)  # Use a consistent variable for absolute path
+        abs_db_path = Path.abspath(self.db_path)  # Use a consistent variable for absolute path
         logging.info(f"Database path: {abs_db_path}")
         self.batch_buffer = []
         self.batch_size = 50  # Larger batches reduce write frequency and read conflicts
@@ -502,10 +508,10 @@ class SensorDatabase:
 
         # Create database directory if it doesn't exist
         if self.db_path != ":memory:":
-            db_dir = os.path.dirname(abs_db_path)
-            if not os.path.exists(db_dir) and db_dir:  # Ensure db_dir is not empty string
+            db_dir = Path.dirname(abs_db_path)
+            if not Path.exists(db_dir) and db_dir:  # Ensure db_dir is not empty string
                 self.logger.info(f"Creating database directory: {db_dir}")
-                os.makedirs(db_dir, exist_ok=True)
+                Path.makedirs(db_dir, exist_ok=True)
             elif not db_dir:
                 self.logger.debug(
                     f"Database path '{self.db_path}' is in the current directory. No directory creation needed beyond what OS provides."
@@ -530,8 +536,8 @@ class SensorDatabase:
 
         try:
             # Check database size
-            if self.db_path != ":memory:" and os.path.exists(self.db_path):
-                db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)
+            if self.db_path != ":memory:" and Path.exists(self.db_path):
+                db_size_mb = Path.getsize(self.db_path) / (1024 * 1024)
                 if db_size_mb > self.max_database_size_mb:
                     self.logger.error(
                         f"Database size ({db_size_mb:.2f}MB) exceeds limit ({self.max_database_size_mb}MB)"
@@ -653,7 +659,7 @@ class SensorDatabase:
         Returns:
             True if database is valid, False if corrupted or inaccessible
         """
-        if not os.path.exists(db_path):
+        if not Path.exists(db_path):
             return True  # No file means no corruption
 
         try:
@@ -683,13 +689,12 @@ class SensorDatabase:
                     self.logger.debug(f"Database contains {count} readings")
                 except sqlite3.Error as e:
                     self.logger.debug(f"Failed to query sensor_readings: {e}")
+                    return False
+                finally:
                     cursor.close()
                     test_conn.close()
-                    return False
 
-            cursor.close()
-            test_conn.close()
-            return True
+                return True
 
         except sqlite3.DatabaseError as e:
             error_msg = str(e).lower()
@@ -740,8 +745,8 @@ class SensorDatabase:
 
             # Create a new temporary database
             temp_db = f"{db_path}.recovery"
-            if os.path.exists(temp_db):
-                os.remove(temp_db)
+            if Path.exists(temp_db):
+                Path.remove(temp_db)
 
             # Initialize new database with recovered data
             if recovered_data:
@@ -812,26 +817,26 @@ class SensorDatabase:
         """
         files_to_remove = []
 
-        if not skip_main and os.path.exists(db_path):
+        if not skip_main and Path.exists(db_path):
             files_to_remove.append(db_path)
 
         # Journal file (for DELETE mode)
         journal_file = f"{db_path}-journal"
-        if os.path.exists(journal_file):
+        if Path.exists(journal_file):
             files_to_remove.append(journal_file)
 
         # WAL mode files (even though we use DELETE mode, they might exist from previous runs)
         wal_file = f"{db_path}-wal"
-        if os.path.exists(wal_file):
+        if Path.exists(wal_file):
             files_to_remove.append(wal_file)
 
         shm_file = f"{db_path}-shm"
-        if os.path.exists(shm_file):
+        if Path.exists(shm_file):
             files_to_remove.append(shm_file)
 
         for file_path in files_to_remove:
             try:
-                os.remove(file_path)
+                Path.unlink(file_path)
                 self.logger.debug(f"Removed: {file_path}")
             except OSError as e:
                 self.logger.warning(f"Could not remove {file_path}: {e}")
@@ -877,13 +882,13 @@ class SensorDatabase:
     def _init_db(self):
         """Initialize the database schema based on SensorReadingSchema."""
         # One more integrity check after connection manager is created
-        if self.db_path != ":memory:" and os.path.exists(self.db_path):
+        if self.db_path != ":memory:" and Path.exists(self.db_path):
             try:
                 # Quick test query to ensure database is accessible
                 test_result = self.conn_manager.execute_query("SELECT 1")
                 if test_result is None or test_result[0][0] != 1:
                     msg = "Database connection test failed"
-                    raise sqlite3.DatabaseError(msg)
+                    raise_with_context(sqlite3.DatabaseError(msg))
             except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
                 error_msg = str(e).lower()
                 if "malformed" in error_msg or "corrupt" in error_msg:
@@ -1111,14 +1116,6 @@ class SensorDatabase:
             raise
 
     def get_unsynced_readings(self, limit: int = 1000) -> list[dict]:
-        """Get readings that haven't been synced yet.
-
-        Args:
-            limit: Maximum number of readings to return
-
-        Returns:
-            List of dictionaries containing the readings
-        """
         try:
             query = """
                 SELECT * FROM sensor_readings
@@ -1139,11 +1136,11 @@ class SensorDatabase:
                 reading = dict(zip(columns, row, strict=False))
                 reading["anomaly_flag"] = bool(reading["anomaly_flag"])
                 readings.append(reading)
-
-            return readings
         except Exception as e:
             self.logger.exception(f"Error getting unsynced readings: {e}")
             return []
+        else:
+            return readings
 
     def mark_readings_as_synced(self, reading_ids: list[int]):
         """Mark readings as synced.
@@ -1175,17 +1172,13 @@ class SensorDatabase:
             Dictionary containing statistics
         """
         try:
-            # Get total readings
+            # --- Only the risky operations go in 'try' ---
             total_readings = self.conn_manager.execute_query(
                 "SELECT COUNT(*) FROM sensor_readings"
             )[0][0]
-
-            # Get unsynced readings
             unsynced_readings = self.conn_manager.execute_query(
                 "SELECT COUNT(*) FROM sensor_readings WHERE synced = 0"
             )[0][0]
-
-            # Get anomaly statistics
             anomaly_rows = self.conn_manager.execute_query(
                 """
                 SELECT anomaly_type, COUNT(*)
@@ -1194,9 +1187,6 @@ class SensorDatabase:
                 GROUP BY anomaly_type
                 """
             )
-            anomaly_stats = dict(anomaly_rows)
-
-            # Get sensor statistics
             sensor_rows = self.conn_manager.execute_query(
                 """
                 SELECT sensor_id, COUNT(*)
@@ -1204,21 +1194,24 @@ class SensorDatabase:
                 GROUP BY sensor_id
                 """
             )
-            sensor_stats = dict(sensor_rows)
-
-            return {
-                "total_readings": total_readings,
-                "unsynced_readings": unsynced_readings,
-                "anomaly_stats": anomaly_stats,
-                "sensor_stats": sensor_stats,
-            }
-        except Exception as e:
+        except Exception as e:  # A more specific exception like db.Error is even better
+            # --- This runs ONLY if a database query fails ---
             self.logger.exception(f"Error getting reading stats: {e}")
             return {
                 "total_readings": 0,
                 "unsynced_readings": 0,
                 "anomaly_stats": {},
                 "sensor_stats": {},
+            }
+        else:
+            # --- This runs ONLY if all the database queries succeeded ---
+            anomaly_stats = dict(anomaly_rows)
+            sensor_stats = dict(sensor_rows)
+            return {
+                "total_readings": total_readings,
+                "unsynced_readings": unsynced_readings,
+                "anomaly_stats": anomaly_stats,
+                "sensor_stats": sensor_stats,
             }
 
     @retry_on_error()
@@ -1368,10 +1361,11 @@ class SensorDatabase:
                 self.batch_buffer = []
                 self.last_batch_time = time.time()
 
-                return batch_size
             except sqlite3.Error as e:
                 logging.exception(f"Error committing batch: {e}")
                 raise
+            else:
+                return batch_size
 
     @retry_on_error()
     def get_readings(self, limit=100, sensor_id=None):
@@ -1436,7 +1430,7 @@ class SensorDatabase:
                         import json
 
                         recovery_file = self.db_path.replace(".db", "_recovery.json")
-                        with open(recovery_file, "w") as f:
+                        with Path.open(recovery_file, "w") as f:
                             readings_data = [r.model_dump() for r in self.failure_buffer]
                             json.dump(readings_data, f, indent=2, default=str)
                         self.logger.info(
@@ -1509,15 +1503,15 @@ class SensorDatabase:
             if self.db_path != ":memory:":
                 try:
                     # Database file
-                    if os.path.exists(self.db_path):
-                        stats["files"]["database"]["size_bytes"] = os.path.getsize(self.db_path)
+                    if Path.exists(self.db_path):
+                        stats["files"]["database"]["size_bytes"] = Path.getsize(self.db_path)
                         stats["files"]["database"]["exists"] = True
                         stats["database_size_bytes"] = stats["files"]["database"]["size_bytes"]
 
                     # Log file
                     log_path = self.db_path.replace(".db", ".log")
-                    if os.path.exists(log_path):
-                        stats["files"]["log"]["size_bytes"] = os.path.getsize(log_path)
+                    if Path.exists(log_path):
+                        stats["files"]["log"]["size_bytes"] = Path.getsize(log_path)
                         stats["files"]["log"]["exists"] = True
                 except OSError as e:
                     self.logger.exception(f"Error getting file sizes: {e}")
@@ -1612,8 +1606,6 @@ class SensorDatabase:
                     "anomaly_types": {row[0]: row[1] for row in anomaly_stats_result},
                 }
 
-            return stats
-
         except Exception as e:
             self.logger.exception(f"Error getting database stats: {e}")
             return {
@@ -1639,6 +1631,8 @@ class SensorDatabase:
                     },
                 },
             }
+        else:
+            return stats
 
     def _add_to_failure_buffer(self, reading_data: SensorReadingSchema):
         """Add a failed reading to the in-memory failure buffer.
@@ -1828,17 +1822,17 @@ class SensorDatabase:
             )
 
         # Database path information
-        abs_db_path = os.path.abspath(self.db_path)
+        abs_db_path = Path.abspath(self.db_path)
         self.logger.debug(f"Database absolute path: {abs_db_path}")
 
         # Directory information
-        db_dir = os.path.dirname(abs_db_path) or "."
-        if os.path.exists(db_dir):
+        db_dir = Path.dirname(abs_db_path) or "."
+        if Path.exists(db_dir):
             self.logger.debug(f"Database directory: {db_dir}")
 
             # Check directory permissions
             try:
-                dir_stat = os.stat(db_dir)
+                dir_stat = Path.stat(db_dir)
                 dir_perms = oct(dir_stat.st_mode)[-3:]
                 self.logger.debug(f"Directory permissions: {dir_perms}")
                 self.logger.debug(f"Directory owner UID: {dir_stat.st_uid}")
@@ -1874,13 +1868,13 @@ class SensorDatabase:
     def _detect_container_environment(self) -> bool:
         """Detect if running in a container environment."""
         # Check for Docker
-        if os.path.exists("/.dockerenv"):
+        if Path.exists("/.dockerenv"):
             self.logger.debug("Detected Docker environment (/.dockerenv exists)")
             return True
 
         # Check cgroup for docker/kubernetes
         try:
-            with open("/proc/self/cgroup") as f:
+            with Path.open("/proc/self/cgroup") as f:
                 cgroup_content = f.read()
                 if "docker" in cgroup_content or "kubepods" in cgroup_content:
                     self.logger.debug("Detected container via /proc/self/cgroup")
@@ -1904,8 +1898,8 @@ class SensorDatabase:
 
         try:
             # Check if database file exists
-            if os.path.exists(self.db_path):
-                file_stat = os.stat(self.db_path)
+            if Path.exists(self.db_path):
+                file_stat = Path.stat(self.db_path)
                 self.logger.debug(f"Database file size: {file_stat.st_size} bytes")
                 file_perms = oct(file_stat.st_mode)[-3:]
                 self.logger.debug(f"Database file permissions: {file_perms}")
@@ -1915,20 +1909,20 @@ class SensorDatabase:
                 shm_path = f"{self.db_path}-shm"
                 journal_path = f"{self.db_path}-journal"
 
-                if os.path.exists(wal_path):
-                    wal_size = os.path.getsize(wal_path)
+                if Path.exists(wal_path):
+                    wal_size = Path.getsize(wal_path)
                     self.logger.debug(f"WAL file exists, size: {wal_size} bytes")
                 else:
                     self.logger.debug("WAL file does not exist")
 
-                if os.path.exists(shm_path):
-                    shm_size = os.path.getsize(shm_path)
+                if Path.exists(shm_path):
+                    shm_size = Path.getsize(shm_path)
                     self.logger.debug(f"SHM file exists, size: {shm_size} bytes")
                 else:
                     self.logger.debug("SHM file does not exist")
 
-                if os.path.exists(journal_path):
-                    journal_size = os.path.getsize(journal_path)
+                if Path.exists(journal_path):
+                    journal_size = Path.getsize(journal_path)
                     self.logger.debug(f"Journal file exists, size: {journal_size} bytes")
                 else:
                     self.logger.debug("Journal file does not exist")
@@ -1943,18 +1937,18 @@ class SensorDatabase:
 
             # Re-check disk space
             try:
-                db_dir = os.path.dirname(self.db_path) or "."
+                db_dir = Path.dirname(self.db_path) or "."
                 disk_usage = psutil.disk_usage(db_dir)
                 self.logger.debug(
                     f"Current disk free: {disk_usage.free / (1024**3):.2f} GB ({100 - disk_usage.percent:.1f}%)"
                 )
 
                 # Check if we can write a test file
-                test_file = os.path.join(db_dir, f".test_write_{os.getpid()}")
+                test_file = Path.joinpath(db_dir, f".test_write_{os.getpid()}")
                 try:
-                    with open(test_file, "w") as f:
+                    with Path.open(test_file, "w") as f:
                         f.write("test")
-                    os.remove(test_file)
+                    Path.unlink(test_file)
                     self.logger.debug("Test file write successful")
                 except Exception as e:
                     self.logger.debug(f"Test file write failed: {e}")
@@ -1966,7 +1960,7 @@ class SensorDatabase:
             try:
                 temp_dir = os.environ.get("SQLITE_TMPDIR", "/tmp")
                 self.logger.debug(f"SQLite temp directory: {temp_dir}")
-                if os.path.exists(temp_dir):
+                if Path.exists(temp_dir):
                     temp_usage = psutil.disk_usage(temp_dir)
                     self.logger.debug(
                         f"Temp dir ({temp_dir}) free: {temp_usage.free / (1024**3):.2f} GB"
@@ -1978,11 +1972,11 @@ class SensorDatabase:
 
                     # Try to create a test file in temp dir
                     if temp_writable:
-                        test_temp_file = os.path.join(temp_dir, f".sqlite_test_{os.getpid()}")
+                        test_temp_file = Path.join(temp_dir, f".sqlite_test_{os.getpid()}")
                         try:
-                            with open(test_temp_file, "w") as f:
+                            with Path.open(test_temp_file, "w") as f:
                                 f.write("test")
-                            os.remove(test_temp_file)
+                            Path.unlink(test_temp_file)
                             self.logger.debug("SQLite temp dir write test successful")
                         except Exception as e:
                             self.logger.debug(f"SQLite temp dir write test failed: {e}")
@@ -2015,6 +2009,6 @@ class SensorDatabase:
         """Clean up database connections when the object is destroyed."""
         try:
             self.close()
-        except Exception:
-            # Suppress exceptions in destructor
+        except Exception as e:
+            contextlib.suppress(e)  # Suppress any exceptions during cleanup
             pass
