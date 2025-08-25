@@ -219,6 +219,6 @@ class TestSensorDatabase:
         # Check stats
         stats = db.get_database_stats()
         assert stats["total_readings"] == 1
-        assert "database_size_bytes" not in stats  # No file size for in-memory
+        assert stats["database_size_mb"] == 0  # No file size for in-memory
 
         db.close()

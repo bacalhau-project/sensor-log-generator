@@ -82,7 +82,7 @@ class SensorDatabase:
             Path(db_path).unlink()
             # Remove journal files
             for suffix in ["-journal", "-wal", "-shm"]:
-                journal_path = Path(db_path + suffix)
+                journal_path = Path(str(db_path) + suffix)
                 if journal_path.exists():
                     journal_path.unlink()
 
@@ -346,6 +346,14 @@ class SensorDatabase:
         # Add file size if not in-memory
         if self.db_path != ":memory:" and Path(self.db_path).exists():
             stats["database_size_bytes"] = Path(self.db_path).stat().st_size
+            stats["database_size_mb"] = stats["database_size_bytes"] / (1024 * 1024)
+        else:
+            stats["database_size_bytes"] = 0
+            stats["database_size_mb"] = 0
+
+        # Add placeholders for expected fields
+        stats["sensor_stats"] = {}
+        stats["anomaly_stats"] = {}
 
         # Add performance metrics for compatibility
         stats["performance_metrics"] = {
