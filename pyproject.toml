@@ -1,6 +1,6 @@
 [project]
 name = "sensor-log-generator"
-version = "1.0.0"
+version = "0.0.0"  # Version managed by git tags
 description = "A robust sensor data simulation system for testing and development"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -105,7 +105,9 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "timeout: marks tests with a timeout limit",
 ]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["src"]
