@@ -77,7 +77,8 @@ class SensorSimulator:
         # Get database path from config
         db_path = self.config_manager.get_database_config().get("path")
         if not db_path:
-            raise ValueError("Database path not specified in config.yaml")
+            msg = "Database path not specified in config.yaml"
+            raise ValueError(msg)
 
         # Ensure the database directory exists
         db_dir = os.path.dirname(db_path)
@@ -189,7 +190,8 @@ class SensorSimulator:
         # Check if location exists (handle both formats)
         location = current_identity.get("location")
         if not location:
-            raise ValueError("Location is required in identity configuration")
+            msg = "Location is required in identity configuration"
+            raise ValueError(msg)
 
         # Extract device info based on format
         device_info = current_identity.get("device_info", {})
@@ -197,14 +199,16 @@ class SensorSimulator:
         # Manufacturer - check nested first, then flat
         manufacturer_val = device_info.get("manufacturer") or current_identity.get("manufacturer")
         if manufacturer_val is None:
-            raise ValueError("Manufacturer is required in identity configuration")
+            msg = "Manufacturer is required in identity configuration"
+            raise ValueError(msg)
         # Accept any string as manufacturer
         self.manufacturer = manufacturer_val
 
         # Model - check nested first, then flat
         model_val = device_info.get("model") or current_identity.get("model")
         if model_val is None:
-            raise ValueError("Model is required in identity configuration")
+            msg = "Model is required in identity configuration"
+            raise ValueError(msg)
         # Accept any string as model
         self.model = model_val
 
@@ -213,13 +217,15 @@ class SensorSimulator:
             "firmware_version"
         )
         if firmware_val is None:
-            raise ValueError("Firmware version is required in identity configuration")
+            msg = "Firmware version is required in identity configuration"
+            raise ValueError(msg)
         # Validate SemVer format
         if not self._is_valid_semver(firmware_val):
-            raise ValueError(
+            msg = (
                 f"Invalid firmware version '{firmware_val}'. "
                 f"Must be a valid semantic version (e.g., 1.0.0, 2.1.3-beta, 1.0.0+build123)"
             )
+            raise ValueError(msg)
         self.firmware_version = firmware_val
 
         # Store additional device info if available
@@ -985,10 +991,7 @@ class SensorSimulator:
         max_val = params.get("max", 100)
 
         # Use mean if provided, otherwise use midpoint of range
-        if "mean" in params:
-            mean = params["mean"]
-        else:
-            mean = (min_val + max_val) / 2
+        mean = params["mean"] if "mean" in params else (min_val + max_val) / 2
 
         # Use std_dev if provided, otherwise derive from range
         # Default to range/6 so that ±3 std devs covers most of the range

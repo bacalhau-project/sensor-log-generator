@@ -79,9 +79,8 @@ def retry_on_error(max_retries=3, retry_delay=1.0):
                     # Check circuit breaker if this is a SensorDatabase method
                     if hasattr(args[0], "_check_circuit_breaker"):
                         if not args[0]._check_circuit_breaker():
-                            raise sqlite3.OperationalError(
-                                "Circuit breaker is open, database operations suspended"
-                            )
+                            msg = "Circuit breaker is open, database operations suspended"
+                            raise sqlite3.OperationalError(msg)
 
                     if debug_mode and attempt > 0:
                         logging.getLogger("SensorDatabase").debug(
@@ -644,7 +643,6 @@ class SensorDatabase:
         # Also handle SIGTERM for docker stop
         # Signal handler removed - main.py handles signals
         # The database will be properly closed when simulator.stop() is called
-        pass
 
     def _check_database_integrity(self, db_path: str) -> bool:
         """Check if an existing database file is valid and not corrupted.
@@ -884,7 +882,8 @@ class SensorDatabase:
                 # Quick test query to ensure database is accessible
                 test_result = self.conn_manager.execute_query("SELECT 1")
                 if test_result is None or test_result[0][0] != 1:
-                    raise sqlite3.DatabaseError("Database connection test failed")
+                    msg = "Database connection test failed"
+                    raise sqlite3.DatabaseError(msg)
             except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
                 error_msg = str(e).lower()
                 if "malformed" in error_msg or "corrupt" in error_msg:
@@ -1270,7 +1269,8 @@ class SensorDatabase:
 
         # Check resources before adding to batch
         if not self._check_resources():
-            raise sqlite3.OperationalError("Resource limits exceeded")
+            msg = "Resource limits exceeded"
+            raise sqlite3.OperationalError(msg)
 
         # Use lock for thread-safe batch operations
         with self._commit_lock:
@@ -1887,7 +1887,6 @@ class SensorDatabase:
                     return True
         except Exception as e:
             self.logger.debug(f"Error detecting container environment: {e}")
-            pass
 
         # Check for common container environment variables
         container_vars = ["KUBERNETES_SERVICE_HOST", "DOCKER_CONTAINER", "container"]

@@ -49,13 +49,15 @@ class DatabaseConfig(BaseModel):
     @field_validator("backup_interval_seconds")
     def validate_backup_interval(cls, v):
         if v < 60:
-            raise ValueError("backup_interval_seconds must be at least 60")
+            msg = "backup_interval_seconds must be at least 60"
+            raise ValueError(msg)
         return v
 
     @field_validator("max_backup_size_mb")
     def validate_max_backup_size(cls, v):
         if v <= 0:
-            raise ValueError("max_backup_size_mb must be positive")
+            msg = "max_backup_size_mb must be positive"
+            raise ValueError(msg)
         return v
 
 
@@ -78,31 +80,37 @@ class SimulationSettings(BaseModel):
     @field_validator("interval_seconds")
     def validate_interval(cls, v):
         if v <= 0:
-            raise ValueError("interval_seconds must be positive")
+            msg = "interval_seconds must be positive"
+            raise ValueError(msg)
         return v
 
     @field_validator("replicas_count")
     def validate_replicas(cls, v):
         if v is not None and v < 1:
-            raise ValueError("replicas_count must be at least 1")
+            msg = "replicas_count must be at least 1"
+            raise ValueError(msg)
         return v
 
     @field_validator("latitude_range")
     def validate_latitude(cls, v):
         if v is not None:
             if len(v) != 2:
-                raise ValueError("latitude_range must have exactly 2 values")
+                msg = "latitude_range must have exactly 2 values"
+                raise ValueError(msg)
             if not (-90 <= v[0] <= v[1] <= 90):
-                raise ValueError("latitude_range must be within [-90, 90]")
+                msg = "latitude_range must be within [-90, 90]"
+                raise ValueError(msg)
         return v
 
     @field_validator("longitude_range")
     def validate_longitude(cls, v):
         if v is not None:
             if len(v) != 2:
-                raise ValueError("longitude_range must have exactly 2 values")
+                msg = "longitude_range must have exactly 2 values"
+                raise ValueError(msg)
             if not (-180 <= v[0] <= v[1] <= 180):
-                raise ValueError("longitude_range must be within [-180, 180]")
+                msg = "longitude_range must be within [-180, 180]"
+                raise ValueError(msg)
         return v
 
 
@@ -148,7 +156,8 @@ class AppConfig(BaseModel):
     def validate_log_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
-            raise ValueError(f"log level must be one of {valid_levels}")
+            msg = f"log level must be one of {valid_levels}"
+            raise ValueError(msg)
         return v.upper()
 
 
@@ -183,15 +192,19 @@ class LocationData(BaseModel):
     def validate_coordinates(cls, v):
         if v is not None:
             if "latitude" not in v or "longitude" not in v:
-                raise ValueError("coordinates must contain 'latitude' and 'longitude'")
+                msg = "coordinates must contain 'latitude' and 'longitude'"
+                raise ValueError(msg)
             lat = v["latitude"]
             lon = v["longitude"]
             if not isinstance(lat, int | float) or not isinstance(lon, int | float):
-                raise ValueError("latitude and longitude must be numeric")
+                msg = "latitude and longitude must be numeric"
+                raise ValueError(msg)
             if not (-90 <= lat <= 90):
-                raise ValueError("latitude must be between -90 and 90")
+                msg = "latitude must be between -90 and 90"
+                raise ValueError(msg)
             if not (-180 <= lon <= 180):
-                raise ValueError("longitude must be between -180 and 180")
+                msg = "longitude must be between -180 and 180"
+                raise ValueError(msg)
         return v
 
 
@@ -206,9 +219,10 @@ class DeviceInfoData(BaseModel):
     def validate_manufacture_date(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
+                datetime.fromisoformat(v)
             except ValueError:
-                raise ValueError("manufacture_date must be in ISO format")
+                msg = "manufacture_date must be in ISO format"
+                raise ValueError(msg)
         return v
 
 
@@ -222,15 +236,17 @@ class DeploymentData(BaseModel):
     def validate_installation_date(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
+                datetime.fromisoformat(v)
             except ValueError:
-                raise ValueError("installation_date must be in ISO format")
+                msg = "installation_date must be in ISO format"
+                raise ValueError(msg)
         return v
 
     @field_validator("orientation_degrees")
     def validate_orientation(cls, v):
         if v is not None and not (0 <= v <= 360):
-            raise ValueError("orientation_degrees must be between 0 and 360")
+            msg = "orientation_degrees must be between 0 and 360"
+            raise ValueError(msg)
         return v
 
 
@@ -244,9 +260,10 @@ class MetadataData(BaseModel):
     def validate_timestamp(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
+                datetime.fromisoformat(v)
             except ValueError:
-                raise ValueError("identity_generation_timestamp must be in ISO format")
+                msg = "identity_generation_timestamp must be in ISO format"
+                raise ValueError(msg)
         return v
 
 
@@ -265,7 +282,8 @@ def load_config(config_path: str) -> dict:
             raw_config_data = yaml.safe_load(f)
         if not isinstance(raw_config_data, dict):
             logging.error(f"Config file {config_path} content must be a dictionary.")
-            raise ValueError("Config file content must be a dictionary.")
+            msg = "Config file content must be a dictionary."
+            raise ValueError(msg)
 
         # Process config to ensure required fields
         config = process_config(raw_config_data)
@@ -289,7 +307,8 @@ def load_config(config_path: str) -> dict:
         raise
     except ValidationError as e:
         logging.error(f"Invalid configuration in {config_path}:\n{e}")
-        raise ValueError(f"Invalid configuration: {e}")
+        msg = f"Invalid configuration: {e}"
+        raise ValueError(msg)
     except Exception as e:
         logging.error(f"Error loading configuration file {config_path}: {e!s}")
         raise
@@ -302,7 +321,8 @@ def load_identity(identity_path: str) -> dict:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
             logging.error(f"Identity file {identity_path} content must be a dictionary.")
-            raise ValueError("Identity file content must be a dictionary.")
+            msg = "Identity file content must be a dictionary."
+            raise ValueError(msg)
 
         # Validate and parse using Pydantic model
         identity_data_model = IdentityData(**raw_identity_data)
@@ -316,7 +336,8 @@ def load_identity(identity_path: str) -> dict:
         raise
     except ValidationError as e:
         logging.error(f"Invalid identity data in {identity_path}:\n{e}")
-        raise ValueError(f"Invalid identity data: {e}")
+        msg = f"Invalid identity data: {e}"
+        raise ValueError(msg)
     except Exception as e:
         logging.error(f"Error loading identity file {identity_path}: {e}")
         raise
@@ -336,7 +357,8 @@ def generate_sensor_id(identity: dict) -> str:
 
     if not location_str:  # Check if location_str is None or empty
         # This function expects location to be present in the identity dict
-        raise ValueError("Location is required in identity data to generate a sensor ID")
+        msg = "Location is required in identity data to generate a sensor ID"
+        raise ValueError(msg)
 
     uppercity_no_special_chars = "".join(c.upper() for c in location_str if c.isalpha())
 
@@ -344,9 +366,8 @@ def generate_sensor_id(identity: dict) -> str:
     location_prefix = uppercity_no_special_chars[:4]
     if not location_prefix:
         # This would happen if location_str had no alpha characters
-        raise ValueError(
-            "Valid location with alphabetic characters is required to generate a sensor ID"
-        )
+        msg = "Valid location with alphabetic characters is required to generate a sensor ID"
+        raise ValueError(msg)
     # Ensure it's padded or truncated to 4 chars if needed, or make it variable
     # For now, assume it must result in a prefix.
     # If location is "Ny", prefix is "NY". If "A", prefix "A".
@@ -425,7 +446,8 @@ def process_identity_and_location(identity_data: dict, app_config: dict) -> dict
         available_cities = location_generator.cities
         if not available_cities:
             logger.error("City data is not available or empty. Cannot generate random location.")
-            raise RuntimeError("City data not available for random location generation.")
+            msg = "City data not available for random location generation."
+            raise RuntimeError(msg)
 
         random_city_name = random.choice(list(available_cities.keys()))
         random_city_data = available_cities[random_city_name]
@@ -639,7 +661,7 @@ def file_watcher_thread(
     simulator_instance: SensorSimulator,
     simulator_update_method_name: str,  # "handle_config_updated" or "handle_identity_updated"
     stop_event: threading.Event,
-    check_interval: int | float,
+    check_interval: float,
 ):
     """
     Monitors a file for changes and updates the ConfigManager and SensorSimulator.
@@ -922,7 +944,8 @@ def main():
 
         # Raise KeyboardInterrupt to break out of blocking calls
         if signal_count == 1:
-            raise KeyboardInterrupt("Signal received")
+            msg = "Signal received"
+            raise KeyboardInterrupt(msg)
 
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
@@ -1044,7 +1067,8 @@ def main():
             logging.info(f"✓ Database is accessible (contains {reading_count} readings)")
         except Exception as e:
             logging.error(f"✗ Database health check failed: {e}")
-            raise RuntimeError(f"Database is not accessible: {e}")
+            msg = f"Database is not accessible: {e}"
+            raise RuntimeError(msg)
 
         # 2. Check disk space availability
         try:
@@ -1056,9 +1080,8 @@ def main():
             free_gb = stat.free / (1024**3)
             min_required_gb = 0.1  # Require at least 100MB free
             if free_gb < min_required_gb:
-                raise RuntimeError(
-                    f"Insufficient disk space: {free_gb:.2f}GB free, need {min_required_gb}GB"
-                )
+                msg = f"Insufficient disk space: {free_gb:.2f}GB free, need {min_required_gb}GB"
+                raise RuntimeError(msg)
             logging.info(f"✓ Disk space available ({free_gb:.2f}GB free)")
         except Exception as e:
             if "Insufficient disk space" in str(e):

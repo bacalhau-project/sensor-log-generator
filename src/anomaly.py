@@ -33,7 +33,8 @@ class AnomalyGenerator:
         # Get sensor ID - handle both old and new formats
         self.id = identity.get("sensor_id") or identity.get("id")
         if not self.id:
-            raise ValueError("Sensor ID is required in identity configuration")
+            msg = "Sensor ID is required in identity configuration"
+            raise ValueError(msg)
 
         # Extract device info based on format
         device_info = identity.get("device_info", {})
@@ -41,10 +42,11 @@ class AnomalyGenerator:
         # Initialize identity with validation - check nested first, then flat
         firmware_val = device_info.get("firmware_version") or identity.get("firmware_version")
         if not self._is_valid_semver(firmware_val):
-            raise ValueError(
+            msg = (
                 f"Invalid firmware version: {firmware_val}. "
                 f"Must be a valid semantic version (e.g., 1.0.0, 2.1.3-beta, 1.0.0+build123)"
             )
+            raise ValueError(msg)
         # Try to convert to enum if possible, otherwise keep as string
         try:
             self.firmware_version = FirmwareVersion(firmware_val)
@@ -62,7 +64,8 @@ class AnomalyGenerator:
 
         manufacturer_val = device_info.get("manufacturer") or identity.get("manufacturer")
         if not manufacturer_val:
-            raise ValueError("Manufacturer is required in identity configuration")
+            msg = "Manufacturer is required in identity configuration"
+            raise ValueError(msg)
         # Accept any string as manufacturer
         self.manufacturer = manufacturer_val
 
@@ -81,7 +84,8 @@ class AnomalyGenerator:
             self.longitude = identity.get("longitude")
 
         if not self.location:
-            raise ValueError("Location is required in identity configuration")
+            msg = "Location is required in identity configuration"
+            raise ValueError(msg)
 
         # Track active anomalies
         self.active_anomalies = {}
@@ -398,7 +402,8 @@ class AnomalyGenerator:
         # Get sensor ID - handle both old and new formats
         self.id = new_identity.get("sensor_id") or new_identity.get("id")
         if not self.id:
-            raise ValueError("Sensor ID is required in identity configuration")
+            msg = "Sensor ID is required in identity configuration"
+            raise ValueError(msg)
 
         # Extract device info based on format
         device_info = new_identity.get("device_info", {})
@@ -409,9 +414,8 @@ class AnomalyGenerator:
             self.firmware_version = FirmwareVersion(firmware_val)
         except ValueError:
             valid_versions = [v.value for v in FirmwareVersion]
-            raise ValueError(
-                f"Invalid firmware version: {firmware_val}. Valid versions are: {valid_versions}"
-            )
+            msg = f"Invalid firmware version: {firmware_val}. Valid versions are: {valid_versions}"
+            raise ValueError(msg)
 
         # Update model
         model_val = device_info.get("model") or new_identity.get("model")
@@ -419,16 +423,18 @@ class AnomalyGenerator:
             self.model = Model(model_val)
         except ValueError:
             valid_models = [m.value for m in Model]
-            raise ValueError(f"Invalid model: {model_val}. Valid models are: {valid_models}")
+            msg = f"Invalid model: {model_val}. Valid models are: {valid_models}"
+            raise ValueError(msg)
 
         # Update manufacturer
         manufacturer_val = device_info.get("manufacturer") or new_identity.get("manufacturer")
         if manufacturer_val:
             self.manufacturer = manufacturer_val
-            raise ValueError(
+            msg = (
                 f"Invalid manufacturer: {manufacturer_val}. "
                 f"Valid manufacturers are: {', '.join([m.value for m in Manufacturer])}"
             )
+            raise ValueError(msg)
 
         # Update location data based on format
         location_data = new_identity.get("location")
@@ -445,6 +451,7 @@ class AnomalyGenerator:
             self.longitude = new_identity.get("longitude")
 
         if not self.location:
-            raise ValueError("Location is required in identity configuration")
+            msg = "Location is required in identity configuration"
+            raise ValueError(msg)
 
         logger.info(f"Updated anomaly generator identity for sensor: {self.id}")

@@ -38,7 +38,8 @@ class TestRetryOnError:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise sqlite3.OperationalError("Database locked")
+                msg = "Database locked"
+                raise sqlite3.OperationalError(msg)
             return "success"
 
         result = eventually_successful_function()
@@ -53,7 +54,8 @@ class TestRetryOnError:
         def always_failing_function():
             nonlocal call_count
             call_count += 1
-            raise sqlite3.OperationalError("Database locked")
+            msg = "Database locked"
+            raise sqlite3.OperationalError(msg)
 
         with pytest.raises(sqlite3.OperationalError):
             always_failing_function()
@@ -67,7 +69,8 @@ class TestRetryOnError:
         def function_with_value_error():
             nonlocal call_count
             call_count += 1
-            raise ValueError("Not a database error")
+            msg = "Not a database error"
+            raise ValueError(msg)
 
         with pytest.raises(ValueError):
             function_with_value_error()

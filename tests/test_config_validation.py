@@ -208,7 +208,6 @@ class TestConfigYamlValidation:
         # For now, we'll assume that the initialization of SensorSimulator with this config
         # doesn't immediately fail due to the string type for an int, as it's just a .get().
         # The error would appear upon usage. The test passes if SensorSimulator can be created.
-        pass
 
 
 # Helper to create temporary config files if needed for ConfigManager tests

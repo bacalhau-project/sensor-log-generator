@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from main import process_identity_and_location  # Import from main.py
 from src.location import LocationGenerator
 
@@ -47,9 +49,9 @@ class TestLocationGenerator(unittest.TestCase):
         }
         generator = LocationGenerator(config)
         city, lat, lon = generator.generate_location()
-        self.assertEqual(city, "TestCity")
-        self.assertEqual(lat, 12.345)
-        self.assertEqual(lon, 67.890)
+        assert city == "TestCity"
+        assert lat == 12.345
+        assert lon == 67.89
 
     def test_generate_location_disabled_missing_lat_long(self):
         scenarios = [
@@ -82,7 +84,7 @@ class TestLocationGenerator(unittest.TestCase):
             with self.subTest(config=cfg):
                 generator = LocationGenerator(cfg)
                 result = generator.generate_location()
-                self.assertIsNone(result, f"Expected None for config: {cfg}")
+                assert result is None, f"Expected None for config: {cfg}"
 
     def test_generate_location_enabled_with_cities_file(self):
         cities_data = [
@@ -116,19 +118,19 @@ class TestLocationGenerator(unittest.TestCase):
         config["cities_file"] = temp_cities_file  # Use absolute path for test simplicity
 
         generator = LocationGenerator(config)
-        self.assertEqual(len(generator.cities), 2)
-        self.assertIn("CityA", generator.cities)
-        self.assertIn("CityB", generator.cities)
+        assert len(generator.cities) == 2
+        assert "CityA" in generator.cities
+        assert "CityB" in generator.cities
 
         city, lat, lon = generator.generate_location()
 
-        self.assertIn(city, ["CityA", "CityB"])
+        assert city in ["CityA", "CityB"]
         if city == "CityA":
-            self.assertEqual(lat, 10.0)
-            self.assertEqual(lon, 20.0)
+            assert lat == 10.0
+            assert lon == 20.0
         else:  # CityB
-            self.assertEqual(lat, 30.0)
-            self.assertEqual(lon, 40.0)
+            assert lat == 30.0
+            assert lon == 40.0
 
     def test_generate_location_enabled_cities_file_takes_top_n_by_population(self):
         cities_data = [
@@ -160,15 +162,15 @@ class TestLocationGenerator(unittest.TestCase):
             "cities_file": temp_cities_file,  # Absolute path
         }
         generator = LocationGenerator(config)
-        self.assertEqual(len(generator.cities), 2)
-        self.assertIn("CityPopHigh", generator.cities)
-        self.assertIn("CityPopMid", generator.cities)
-        self.assertNotIn("CityPopLow", generator.cities)
+        assert len(generator.cities) == 2
+        assert "CityPopHigh" in generator.cities
+        assert "CityPopMid" in generator.cities
+        assert "CityPopLow" not in generator.cities
 
         # Test that one of the top N cities is generated
         for _ in range(5):  # Generate a few times to increase chance of picking both if random
             city_name, _, _ = generator.generate_location()
-            self.assertIn(city_name, ["CityPopHigh", "CityPopMid"])
+            assert city_name in ["CityPopHigh", "CityPopMid"]
 
     def test_generate_location_enabled_no_cities_file_generates_random(self):
         non_existent_file = os.path.join(self.temp_dir.name, "no_such_cities.json")
@@ -179,26 +181,25 @@ class TestLocationGenerator(unittest.TestCase):
             "cities_file": non_existent_file,
         }
         generator = LocationGenerator(config)
-        self.assertEqual(len(generator.cities), 3)
-        self.assertTrue(all(c.startswith("City_") for c in generator.cities))
+        assert len(generator.cities) == 3
+        assert all(c.startswith("City_") for c in generator.cities)
 
         city, lat, lon = generator.generate_location()
-        self.assertIn(city, generator.cities.keys())
-        self.assertTrue(-90 <= lat <= 90)
-        self.assertTrue(-180 <= lon <= 180)
+        assert city in generator.cities
+        assert -90 <= lat <= 90
+        assert -180 <= lon <= 180
 
         # Check that gps_variation is applied (lat/lon will not be exactly the base generated ones)
         # We can't know the exact base, but we can check it's not 0,0 unless randomly generated so
         base_lat = generator.cities[city]["latitude"]
         base_lon = generator.cities[city]["longitude"]
         if config["gps_variation"] > 0:
-            self.assertTrue(
-                lat != base_lat or lon != base_lon or (base_lat == 0 and base_lon == 0),
-                "GPS variation should alter coordinates unless base is (0,0) and offset is also 0.",
-            )
+            assert (
+                lat != base_lat or lon != base_lon or (base_lat == 0 and base_lon == 0)
+            ), "GPS variation should alter coordinates unless base is (0,0) and offset is also 0."
         else:
-            self.assertEqual(lat, base_lat)
-            self.assertEqual(lon, base_lon)
+            assert lat == base_lat
+            assert lon == base_lon
 
 
 class TestProcessIdentityAndLocationInMain(unittest.TestCase):
@@ -260,9 +261,9 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
 
         processed_identity = process_identity_and_location(identity_data, app_config)
 
-        self.assertEqual(processed_identity["location"], identity_data["location"])
-        self.assertEqual(processed_identity["latitude"], identity_data["latitude"])
-        self.assertEqual(processed_identity["longitude"], identity_data["longitude"])
+        assert processed_identity["location"] == identity_data["location"]
+        assert processed_identity["latitude"] == identity_data["latitude"]
+        assert processed_identity["longitude"] == identity_data["longitude"]
         MockLocationGenerator.assert_not_called()  # LocationGenerator shouldn't be used
 
     @patch("main.generate_sensor_id", return_value="GENERATED_ID_MOCK")
@@ -282,15 +283,11 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
 
         processed_identity = process_identity_and_location(identity_data, app_config)
 
-        self.assertEqual(
-            processed_identity["location"], identity_data["location"]
+        assert (
+            processed_identity["location"] == identity_data["location"]
         )  # Location name shouldn't change
-        self.assertNotEqual(
-            processed_identity["latitude"], initial_lat, "Latitude should be fuzzed"
-        )
-        self.assertNotEqual(
-            processed_identity["longitude"], initial_lon, "Longitude should be fuzzed"
-        )
+        assert processed_identity["latitude"] != initial_lat, "Latitude should be fuzzed"
+        assert processed_identity["longitude"] != initial_lon, "Longitude should be fuzzed"
         # Check if coordinates are reasonably close (e.g., within ~0.01 degrees for 1km fuzz)
         self.assertAlmostEqual(
             processed_identity["latitude"], initial_lat, delta=0.015
@@ -326,18 +323,18 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
 
         # Run 1
         processed_identity1 = process_identity_and_location(identity_data.copy(), app_config)
-        self.assertIn(processed_identity1["location"], self.mock_city_data.keys())
+        assert processed_identity1["location"] in self.mock_city_data
         base_city1_data = self.mock_city_data[processed_identity1["location"]]
-        self.assertNotEqual(processed_identity1["latitude"], base_city1_data["latitude"])
-        self.assertNotEqual(processed_identity1["longitude"], base_city1_data["longitude"])
+        assert processed_identity1["latitude"] != base_city1_data["latitude"]
+        assert processed_identity1["longitude"] != base_city1_data["longitude"]
 
         # Run 2 - to check if generated location is not constant (due to random.choice and fuzzing)
         # With a real LocationGenerator, city choice is random; fuzzing should ensure coord difference
         processed_identity2 = process_identity_and_location(identity_data.copy(), app_config)
-        self.assertIn(processed_identity2["location"], self.mock_city_data.keys())
+        assert processed_identity2["location"] in self.mock_city_data
         base_city2_data = self.mock_city_data[processed_identity2["location"]]
-        self.assertNotEqual(processed_identity2["latitude"], base_city2_data["latitude"])
-        self.assertNotEqual(processed_identity2["longitude"], base_city2_data["longitude"])
+        assert processed_identity2["latitude"] != base_city2_data["latitude"]
+        assert processed_identity2["longitude"] != base_city2_data["longitude"]
 
         # Check that the two generated locations are different (either city name or fuzzed coords)
         # With fuzzing, even if the same city is picked, coords should differ.
@@ -347,10 +344,9 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
             processed_identity1["latitude"] != processed_identity2["latitude"]
             or processed_identity1["longitude"] != processed_identity2["longitude"]
         )
-        self.assertTrue(
-            location_different or coords_different,
-            "Generated locations/coords should not be constant across calls.",
-        )
+        assert (
+            location_different or coords_different
+        ), "Generated locations/coords should not be constant across calls."
 
     @patch("main.generate_sensor_id")  # Not expected to be called if erroring before ID gen
     @patch("main.LocationGenerator")
@@ -367,7 +363,7 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
         app_config = self.base_app_config.copy()
         app_config["random_location"]["enabled"] = False
 
-        with self.assertRaisesRegex(RuntimeError, "Required geo-fields .* are missing or invalid"):
+        with pytest.raises(RuntimeError, match="Required geo-fields .* are missing or invalid"):
             process_identity_and_location(identity_data, app_config)
 
         MockLocationGenerator.assert_not_called()

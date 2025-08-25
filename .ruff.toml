@@ -1,0 +1,17 @@
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "B", "SIM", "UP", "PTH", "TRY"]
+ignore = [
+    "ERA001",  # Don't remove commented code - it might be important
+    "TRY003",  # Long exception messages are OK
+    "TRY401",  # Logging exception is OK
+    "B904",    # raise from is optional
+    "SIM108",  # Ternary operators can be less readable
+    "E501",    # Line length handled by formatter
+]
+fixable = ["ALL"]
+
+[format]
+quote-style = "double"

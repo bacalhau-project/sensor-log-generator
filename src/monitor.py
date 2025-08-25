@@ -40,7 +40,6 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
     def log_error(self, format, *args):
         """Override to suppress error logging."""
         # Completely suppress error logging
-        pass
 
     # ADDED: New method to handle malformed requests silently
     def handle_one_request(self):

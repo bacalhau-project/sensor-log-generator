@@ -7,6 +7,8 @@ import unittest
 # Add src directory to Python path to allow importing modules from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+import pytest
+
 from src.config import (
     ConfigManager,  # Assuming ConfigManager is in config.py
 )
@@ -118,13 +120,13 @@ class TestSensorSimulator(unittest.TestCase):
         rows = cursor.fetchall()
         conn.close()
 
-        self.assertTrue(len(rows) > 0, "No readings found in the database.")
+        assert len(rows) > 0, "No readings found in the database."
         for row in rows:
-            self.assertEqual(row[0], "VALID_ID_001")
-            self.assertEqual(row[1], "ValidCity")
+            assert row[0] == "VALID_ID_001"
+            assert row[1] == "ValidCity"
             self.assertAlmostEqual(row[2], 34.0522, places=6)
             self.assertAlmostEqual(row[3], -118.2437, places=6)
-            self.assertIsNotNone(row[4], "Temperature should not be None")
+            assert row[4] is not None, "Temperature should not be None"
 
     def test_initialization_with_invalid_location_data(self):
         config = get_minimal_config(self.db_path)
@@ -147,17 +149,16 @@ class TestSensorSimulator(unittest.TestCase):
 
         for identity in scenarios:
             with self.subTest(identity=identity):
-                with self.assertRaises(ValueError) as context:
+                with pytest.raises(ValueError) as context:
                     config_manager = ConfigManager(config=config, identity=identity)
                     SensorSimulator(config_manager=config_manager)
-                self.assertTrue(
-                    "incomplete location information" in str(context.exception).lower()
-                    or "valid manufacturers are" in str(context.exception).lower()
-                    or "valid models are" in str(context.exception).lower()
-                    or "valid versions are" in str(context.exception).lower()
-                    or "location is required" in str(context.exception).lower(),
-                    f"Unexpected ValueError message: {context.exception!s}",
-                )
+                assert (
+                    "incomplete location information" in str(context.value).lower()
+                    or "valid manufacturers are" in str(context.value).lower()
+                    or "valid models are" in str(context.value).lower()
+                    or "valid versions are" in str(context.value).lower()
+                    or "location is required" in str(context.value).lower()
+                ), f"Unexpected ValueError message: {context.value!s}"
 
     def test_simulator_with_anomalies_enabled(self):
         """Test simulator with anomalies enabled."""
@@ -180,7 +181,7 @@ class TestSensorSimulator(unittest.TestCase):
         count = cursor.fetchone()[0]
         conn.close()
 
-        self.assertGreater(count, 0, "No readings generated with anomalies enabled")
+        assert count > 0, "No readings generated with anomalies enabled"
 
     def test_simulator_with_different_firmware_versions(self):
         """Test simulator with different firmware versions."""
@@ -195,7 +196,7 @@ class TestSensorSimulator(unittest.TestCase):
                 simulator = SensorSimulator(config_manager=config_manager)
 
                 # Should initialize without error
-                self.assertEqual(simulator.firmware_version, firmware_version)
+                assert simulator.firmware_version == firmware_version
 
     def test_simulator_with_different_manufacturers(self):
         """Test simulator with different manufacturers."""
@@ -216,7 +217,7 @@ class TestSensorSimulator(unittest.TestCase):
                 simulator = SensorSimulator(config_manager=config_manager)
 
                 # Should initialize without error
-                self.assertEqual(simulator.manufacturer, manufacturer)
+                assert simulator.manufacturer == manufacturer
 
     def test_simulator_with_different_models(self):
         """Test simulator with different models."""
@@ -231,7 +232,7 @@ class TestSensorSimulator(unittest.TestCase):
                 simulator = SensorSimulator(config_manager=config_manager)
 
                 # Should initialize without error
-                self.assertEqual(simulator.model, model)
+                assert simulator.model == model
 
     def test_simulator_with_monitoring_enabled(self):
         """Test simulator with monitoring enabled."""
@@ -244,7 +245,7 @@ class TestSensorSimulator(unittest.TestCase):
         simulator = SensorSimulator(config_manager=config_manager)
 
         # Should initialize without error even with monitoring
-        self.assertIsNotNone(simulator)
+        assert simulator is not None
 
     def test_simulator_get_status(self):
         """Test that simulator can provide status information."""
@@ -257,10 +258,10 @@ class TestSensorSimulator(unittest.TestCase):
         status = simulator.get_status()
 
         # Status should be a dictionary with expected keys
-        self.assertIsInstance(status, dict)
-        self.assertIn("sensor_id", status)
-        self.assertIn("location", status)
-        self.assertIn("running", status)
+        assert isinstance(status, dict)
+        assert "sensor_id" in status
+        assert "location" in status
+        assert "running" in status
 
     def test_simulator_with_extreme_readings_per_second(self):
         """Test simulator with extreme readings per second values."""
@@ -287,7 +288,7 @@ class TestSensorSimulator(unittest.TestCase):
         config = get_minimal_config(invalid_db_path)
         identity = get_minimal_identity()
 
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             config_manager = ConfigManager(config=config, identity=identity)
             SensorSimulator(config_manager=config_manager)
 
