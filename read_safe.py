@@ -43,7 +43,6 @@ def safe_read(db_path="data/sensor_data.db", query=None):
         result = cursor.execute(query).fetchall()
 
         conn.close()
-        return result
 
     except sqlite3.OperationalError as e:
         if "database is locked" in str(e):
@@ -54,6 +53,8 @@ def safe_read(db_path="data/sensor_data.db", query=None):
             return f"Error: {e}"
     except Exception as e:
         return f"Unexpected error: {e}"
+    else:
+        return result
 
 
 def monitor_loop(interval=2):
@@ -100,7 +101,7 @@ def main():
         query = (
             args.query
             or """
-            SELECT 
+            SELECT
                 COUNT(*) as total_readings,
                 COUNT(DISTINCT sensor_id) as sensors,
                 MAX(timestamp) as latest,

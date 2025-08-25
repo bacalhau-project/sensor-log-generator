@@ -580,19 +580,7 @@ class SensorSimulator:
             # Identify specific error types
             error_msg = str(e).lower()
             if "disk i/o error" in error_msg:
-                # Check if database has been retrying for a while
-                if hasattr(self.database, "failure_retry_count"):
-                    retry_count = self.database.failure_retry_count
-                    if retry_count >= len(self.database.failure_buffer_retry_intervals):
-                        # We've hit the 15-second threshold
-                        logger.exception(
-                            f"DISK I/O ERROR persists after {retry_count} retry attempts"
-                        )
-                    else:
-                        # Still in early retry phase, don't spam errors
-                        logger.debug(f"Disk I/O error, retry #{retry_count + 1} pending")
-                else:
-                    logger.debug("Disk I/O error detected, will retry")
+                logger.exception("DISK I/O ERROR detected")
             elif "database is locked" in error_msg:
                 logger.exception("DATABASE LOCKED - another process may be holding a write lock")
             elif "malformed" in error_msg or "corrupt" in error_msg:

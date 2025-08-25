@@ -9,7 +9,6 @@
 import sqlite3
 import tempfile
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -121,7 +120,7 @@ class TestDatabaseReadOperations:
         # Insert readings with specific timestamps
         base_time = time.time()
         for i in range(10):
-            timestamp = base_time - (i * 60)  # 1 minute apart
+            # timestamp = base_time - (i * 60)  # 1 minute apart (not used in new API)
             # Use insert_reading which accepts individual parameters
             self.db.insert_reading(
                 sensor_id=f"TIME{i:03d}",
@@ -566,7 +565,7 @@ class TestDatabaseEdgeCases:
         )
 
         # Test future timestamp (2100)
-        future_timestamp = datetime(2100, 1, 1, tzinfo=UTC).timestamp()
+        # future_timestamp = datetime(2100, 1, 1, tzinfo=UTC).timestamp()  # Not used in new API
         db.insert_reading(
             sensor_id="FUTURE001",
             temperature=25.0,

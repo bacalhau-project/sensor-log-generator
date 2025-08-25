@@ -84,7 +84,7 @@ class DockerBuilder:
 
                     if len(parts) >= 2:
                         return f"{parts[0]}/{parts[1]}"
-        except:
+        except Exception:
             pass
 
         # Fall back to current directory
@@ -99,7 +99,7 @@ class DockerBuilder:
             )
             if result.returncode == 0:
                 return result.stdout.strip()
-        except:
+        except Exception:
             pass
         return "GITHUB_USER_NOT_SET"
 
@@ -252,12 +252,12 @@ class DockerBuilder:
                         tag = tag[1:]
                     try:
                         versions.append(semver.Version.parse(tag))
-                    except:
+                    except Exception:
                         continue
 
                 if versions:
                     return max(versions)
-        except:
+        except Exception:
             pass
         return None
 
@@ -344,7 +344,7 @@ class DockerBuilder:
             if result.returncode == 0:
                 git_hash = result.stdout.strip()
                 tags.append(f"{base_tag}:{git_hash}")
-        except:
+        except Exception:
             pass
 
         # Build command
@@ -466,7 +466,7 @@ class DockerBuilder:
                 subprocess.run(
                     ["docker", "buildx", "rm", self.builder_name], capture_output=True, check=False
                 )
-        except:
+        except Exception:
             pass
 
 

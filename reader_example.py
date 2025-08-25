@@ -16,7 +16,7 @@ from pathlib import Path
 class SafeSensorReader:
     """
     Thread-safe reader for sensor database that doesn't interfere with writers.
-    
+
     Key features:
     - Read-only connection to prevent accidental writes
     - Proper timeout handling for busy database
@@ -27,7 +27,7 @@ class SafeSensorReader:
     def __init__(self, db_path: str, timeout: float = 30.0):
         """
         Initialize the reader.
-        
+
         Args:
             db_path: Path to the SQLite database
             timeout: Maximum time to wait for database lock (seconds)
@@ -40,18 +40,14 @@ class SafeSensorReader:
     def get_connection(self):
         """
         Get a read-only connection to the database.
-        
+
         Yields:
             sqlite3.Connection: Read-only database connection
         """
         conn = None
         try:
             # Open in read-only mode to prevent any writes
-            conn = sqlite3.connect(
-                f"file:{self.db_path}?mode=ro",
-                uri=True,
-                timeout=self.timeout
-            )
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=self.timeout)
 
             # Set to query-only mode for extra safety
             conn.execute("PRAGMA query_only=1;")
@@ -76,23 +72,26 @@ class SafeSensorReader:
     def read_latest(self, limit: int = 10) -> list[dict]:
         """
         Read the latest sensor readings.
-        
+
         Args:
             limit: Maximum number of readings to return
-            
+
         Returns:
             List of sensor readings as dictionaries
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, timestamp, sensor_id, temperature, humidity, 
-                       pressure, air_quality, vibration, voltage, 
+            cursor = conn.execute(
+                """
+                SELECT id, timestamp, sensor_id, temperature, humidity,
+                       pressure, air_quality, vibration, voltage,
                        light_level, latitude, longitude, battery_level,
                        signal_strength, error_code
                 FROM sensor_readings
                 ORDER BY id DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
 
             columns = [desc[0] for desc in cursor.description]
             return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
@@ -100,32 +99,35 @@ class SafeSensorReader:
     def read_incremental(self, last_id: int = 0, limit: int = 100) -> tuple[list[dict], int]:
         """
         Read new sensor data since the last known ID.
-        
+
         Args:
             last_id: ID of the last reading we processed
             limit: Maximum number of readings to return
-            
+
         Returns:
             Tuple of (new_readings, max_id)
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, timestamp, sensor_id, temperature, humidity, 
-                       pressure, air_quality, vibration, voltage, 
+            cursor = conn.execute(
+                """
+                SELECT id, timestamp, sensor_id, temperature, humidity,
+                       pressure, air_quality, vibration, voltage,
                        light_level, latitude, longitude, battery_level,
                        signal_strength, error_code
                 FROM sensor_readings
                 WHERE id > ?
                 ORDER BY id ASC
                 LIMIT ?
-            """, (last_id, limit))
+            """,
+                (last_id, limit),
+            )
 
             columns = [desc[0] for desc in cursor.description]
             readings = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
             # Get the highest ID for next iteration
             if readings:
-                max_id = max(r['id'] for r in readings)
+                max_id = max(r["id"] for r in readings)
             else:
                 max_id = last_id
 
@@ -134,20 +136,23 @@ class SafeSensorReader:
     def read_time_range(self, start_time: datetime, end_time: datetime) -> list[dict]:
         """
         Read sensor data within a time range.
-        
+
         Args:
             start_time: Start of time range
             end_time: End of time range
-            
+
         Returns:
             List of sensor readings in the time range
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT * FROM sensor_readings
                 WHERE timestamp BETWEEN ? AND ?
                 ORDER BY timestamp ASC
-            """, (start_time.isoformat(), end_time.isoformat()))
+            """,
+                (start_time.isoformat(), end_time.isoformat()),
+            )
 
             columns = [desc[0] for desc in cursor.description]
             return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
@@ -155,10 +160,10 @@ class SafeSensorReader:
     def get_statistics(self, sensor_id: str | None = None) -> dict:
         """
         Get statistical summary of sensor readings.
-        
+
         Args:
             sensor_id: Optional sensor ID to filter by
-            
+
         Returns:
             Dictionary with statistics
         """
@@ -170,8 +175,9 @@ class SafeSensorReader:
                 where_clause = ""
                 params = ()
 
-            cursor = conn.execute(f"""
-                SELECT 
+            cursor = conn.execute(
+                f"""
+                SELECT
                     COUNT(*) as total_readings,
                     MIN(timestamp) as first_reading,
                     MAX(timestamp) as last_reading,
@@ -184,7 +190,9 @@ class SafeSensorReader:
                     COUNT(DISTINCT sensor_id) as unique_sensors
                 FROM sensor_readings
                 {where_clause}
-            """, params)
+            """,
+                params,
+            )
 
             row = cursor.fetchone()
             columns = [desc[0] for desc in cursor.description]
@@ -201,7 +209,7 @@ def simple_reader_example(db_path: str):
     conn = sqlite3.connect(
         f"file:{db_path}?mode=ro",  # Read-only mode
         uri=True,
-        timeout=30.0  # Wait up to 30 seconds if database is busy
+        timeout=30.0,  # Wait up to 30 seconds if database is busy
     )
 
     try:
@@ -220,8 +228,10 @@ def simple_reader_example(db_path: str):
 
         print(f"Found {len(readings)} readings:")
         for reading in readings:
-            print(f"  ID={reading[0]}, Time={reading[1]}, Sensor={reading[2]}, "
-                  f"Temp={reading[3]:.1f}°C, Humidity={reading[4]:.1f}%")
+            print(
+                f"  ID={reading[0]}, Time={reading[1]}, Sensor={reading[2]}, "
+                f"Temp={reading[3]:.1f}°C, Humidity={reading[4]:.1f}%"
+            )
 
     finally:
         conn.close()
@@ -245,9 +255,11 @@ def continuous_reader_example(db_path: str, duration: int = 30):
             if new_readings:
                 print(f"\nFound {len(new_readings)} new readings:")
                 for reading in new_readings:
-                    print(f"  [{reading['timestamp']}] Sensor {reading['sensor_id']}: "
-                          f"Temp={reading['temperature']:.1f}°C, "
-                          f"Humidity={reading['humidity']:.1f}%")
+                    print(
+                        f"  [{reading['timestamp']}] Sensor {reading['sensor_id']}: "
+                        f"Temp={reading['temperature']:.1f}°C, "
+                        f"Humidity={reading['humidity']:.1f}%"
+                    )
             else:
                 print(".", end="", flush=True)
 
@@ -275,12 +287,14 @@ def statistics_example(db_path: str):
     try:
         stats = reader.get_statistics()
 
-        if stats and stats.get('total_readings'):
+        if stats and stats.get("total_readings"):
             print(f"Total readings: {stats['total_readings']:,}")
             print(f"Unique sensors: {stats['unique_sensors']}")
             print(f"Time range: {stats['first_reading']} to {stats['last_reading']}")
-            print(f"Temperature: {stats['min_temperature']:.1f}°C to {stats['max_temperature']:.1f}°C "
-                  f"(avg: {stats['avg_temperature']:.1f}°C)")
+            print(
+                f"Temperature: {stats['min_temperature']:.1f}°C to {stats['max_temperature']:.1f}°C "
+                f"(avg: {stats['avg_temperature']:.1f}°C)"
+            )
             print(f"Average humidity: {stats['avg_humidity']:.1f}%")
             print(f"Average pressure: {stats['avg_pressure']:.1f} hPa")
             print(f"Average battery: {stats['avg_battery']:.1f}%")
@@ -299,19 +313,19 @@ def main():
         "db_path",
         nargs="?",
         default="data/sensor_data.db",
-        help="Path to the sensor database (default: data/sensor_data.db)"
+        help="Path to the sensor database (default: data/sensor_data.db)",
     )
     parser.add_argument(
         "--mode",
         choices=["simple", "continuous", "stats", "all"],
         default="all",
-        help="Reading mode to demonstrate (default: all)"
+        help="Reading mode to demonstrate (default: all)",
     )
     parser.add_argument(
         "--duration",
         type=int,
         default=30,
-        help="Duration for continuous mode in seconds (default: 30)"
+        help="Duration for continuous mode in seconds (default: 30)",
     )
 
     args = parser.parse_args()

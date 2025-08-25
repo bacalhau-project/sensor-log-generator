@@ -5,12 +5,12 @@ Tests database resilience under aggressive load conditions.
 """
 
 import multiprocessing
-import os
 import sqlite3
 import sys
 import threading
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 # Test configuration
 TEST_CONFIG = {
@@ -89,7 +89,9 @@ def setup_database(db_path: str):
     conn.close()
 
 
-def writer_process(process_id: int, db_path: str, duration: int, writes_per_second: int, stats_queue):
+def writer_process(
+    process_id: int, db_path: str, duration: int, writes_per_second: int, stats_queue
+):
     """Simulate sensor writes with batching."""
     stats = TestStats()
     conn = None
@@ -126,7 +128,7 @@ def writer_process(process_id: int, db_path: str, duration: int, writes_per_seco
                     "TestCorp",
                     f"Location_{process_id}",
                     "+00:00",
-                    0  # Not synced
+                    0,  # Not synced
                 )
 
                 batch.append(reading)
@@ -139,13 +141,16 @@ def writer_process(process_id: int, db_path: str, duration: int, writes_per_seco
                 if len(batch) >= batch_size or batch_age >= batch_timeout:
                     # Commit batch
                     write_start = time.time()
-                    cursor = conn.executemany("""
-                        INSERT INTO sensor_readings 
+                    conn.executemany(
+                        """
+                        INSERT INTO sensor_readings
                         (timestamp, sensor_id, temperature, vibration, voltage,
                          status_code, anomaly_flag, anomaly_type, firmware_version,
                          model, manufacturer, location, original_timezone, synced)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, batch)
+                    """,
+                        batch,
+                    )
                     conn.commit()
                     write_latency = time.time() - write_start
 
@@ -171,13 +176,16 @@ def writer_process(process_id: int, db_path: str, duration: int, writes_per_seco
         # Final batch commit
         if batch:
             try:
-                conn.executemany("""
-                    INSERT INTO sensor_readings 
+                conn.executemany(
+                    """
+                    INSERT INTO sensor_readings
                     (timestamp, sensor_id, temperature, vibration, voltage,
                      status_code, anomaly_flag, anomaly_type, firmware_version,
                      model, manufacturer, location, original_timezone, synced)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, batch)
+                """,
+                    batch,
+                )
                 conn.commit()
                 stats.increment("writes_succeeded", len(batch))
             except Exception as e:
@@ -210,13 +218,16 @@ def reader_process(process_id: int, db_path: str, duration: int, read_interval: 
                 stats.increment("reads_attempted")
 
                 # Read new data since last check
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT id, timestamp, sensor_id, temperature, vibration, voltage
                     FROM sensor_readings
                     WHERE id > ?
                     ORDER BY id DESC
                     LIMIT 100
-                """, (last_row_id,))
+                """,
+                    (last_row_id,),
+                )
 
                 rows = cursor.fetchall()
                 read_latency = time.time() - read_start
@@ -252,52 +263,62 @@ def reader_process(process_id: int, db_path: str, duration: int, read_interval: 
 
 def run_stress_test(config: dict) -> dict:
     """Run the stress test with multiple concurrent readers and writers."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DATABASE STRESS TEST")
-    print("="*60)
+    print("=" * 60)
     print("Configuration:")
     print(f"  Writers: {config['num_writers']}")
     print(f"  Readers: {config['num_readers']}")
     print(f"  Writes/sec/writer: {config['writes_per_second']}")
     print(f"  Duration: {config['test_duration']}s")
     print(f"  Database: {config['db_path']}")
-    print("-"*60)
+    print("-" * 60)
 
     # Clean up any existing test database
-    if os.path.exists(config['db_path']):
-        os.remove(config['db_path'])
+    if Path.exists(config["db_path"]):
+        Path.unlink(config["db_path"])
 
     # Setup database
-    setup_database(config['db_path'])
+    setup_database(config["db_path"])
 
     # Create multiprocessing queue for stats collection
     stats_queue = multiprocessing.Queue()
 
     # Start writer processes
     writers = []
-    for i in range(config['num_writers']):
+    for i in range(config["num_writers"]):
         p = multiprocessing.Process(
             target=writer_process,
-            args=(i, config['db_path'], config['test_duration'],
-                  config['writes_per_second'], stats_queue)
+            args=(
+                i,
+                config["db_path"],
+                config["test_duration"],
+                config["writes_per_second"],
+                stats_queue,
+            ),
         )
         p.start()
         writers.append(p)
 
     # Start reader processes
     readers = []
-    for i in range(config['num_readers']):
+    for i in range(config["num_readers"]):
         p = multiprocessing.Process(
             target=reader_process,
-            args=(i, config['db_path'], config['test_duration'],
-                  config['reader_interval'], stats_queue)
+            args=(
+                i,
+                config["db_path"],
+                config["test_duration"],
+                config["reader_interval"],
+                stats_queue,
+            ),
         )
         p.start()
         readers.append(p)
 
     # Monitor progress
     print("\nTest running", end="")
-    for i in range(config['test_duration']):
+    for _ in range(config["test_duration"]):
         print(".", end="", flush=True)
         time.sleep(1)
     print(" Done!")
@@ -325,25 +346,29 @@ def run_stress_test(config: dict) -> dict:
 
     while not stats_queue.empty():
         process_type, process_id, stats = stats_queue.get()
-        for key in ["writes_attempted", "writes_succeeded", "writes_failed",
-                   "reads_attempted", "reads_succeeded", "reads_failed"]:
+        for key in [
+            "writes_attempted",
+            "writes_succeeded",
+            "writes_failed",
+            "reads_attempted",
+            "reads_succeeded",
+            "reads_failed",
+        ]:
             aggregated_stats[key] += stats.get(key, 0)
 
         aggregated_stats["read_errors"].extend(stats.get("read_errors", []))
         aggregated_stats["write_errors"].extend(stats.get("write_errors", []))
         aggregated_stats["corruption_detected"] |= stats.get("corruption_detected", False)
         aggregated_stats["max_read_latency"] = max(
-            aggregated_stats["max_read_latency"],
-            stats.get("max_read_latency", 0)
+            aggregated_stats["max_read_latency"], stats.get("max_read_latency", 0)
         )
         aggregated_stats["max_write_latency"] = max(
-            aggregated_stats["max_write_latency"],
-            stats.get("max_write_latency", 0)
+            aggregated_stats["max_write_latency"], stats.get("max_write_latency", 0)
         )
 
     # Final database check
     try:
-        conn = sqlite3.connect(config['db_path'])
+        conn = sqlite3.connect(config["db_path"])
         cursor = conn.execute("SELECT COUNT(*) FROM sensor_readings")
         total_records = cursor.fetchone()[0]
 
@@ -364,33 +389,35 @@ def run_stress_test(config: dict) -> dict:
 
 def print_results(stats: dict):
     """Print test results in a formatted way."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST RESULTS")
-    print("="*60)
+    print("=" * 60)
 
     # Write statistics
     write_success_rate = (
         (stats["writes_succeeded"] / stats["writes_attempted"] * 100)
-        if stats["writes_attempted"] > 0 else 0
+        if stats["writes_attempted"] > 0
+        else 0
     )
     print("\nWrite Operations:")
     print(f"  Attempted: {stats['writes_attempted']:,}")
     print(f"  Succeeded: {stats['writes_succeeded']:,}")
     print(f"  Failed: {stats['writes_failed']:,}")
     print(f"  Success Rate: {write_success_rate:.2f}%")
-    print(f"  Max Latency: {stats['max_write_latency']*1000:.2f}ms")
+    print(f"  Max Latency: {stats['max_write_latency'] * 1000:.2f}ms")
 
     # Read statistics
     read_success_rate = (
         (stats["reads_succeeded"] / stats["reads_attempted"] * 100)
-        if stats["reads_attempted"] > 0 else 0
+        if stats["reads_attempted"] > 0
+        else 0
     )
     print("\nRead Operations:")
     print(f"  Attempted: {stats['reads_attempted']:,}")
     print(f"  Succeeded: {stats['reads_succeeded']:,}")
     print(f"  Failed: {stats['reads_failed']:,}")
     print(f"  Success Rate: {read_success_rate:.2f}%")
-    print(f"  Max Latency: {stats['max_read_latency']*1000:.2f}ms")
+    print(f"  Max Latency: {stats['max_read_latency'] * 1000:.2f}ms")
 
     # Database state
     print("\nDatabase State:")
@@ -415,11 +442,13 @@ def print_results(stats: dict):
                 print(f"    - {error}")
 
     # Test verdict
-    print("\n" + "="*60)
-    if (write_success_rate >= 99.0 and
-        read_success_rate >= 99.0 and
-        not stats["corruption_detected"] and
-        stats.get("integrity_check") == "ok"):
+    print("\n" + "=" * 60)
+    if (
+        write_success_rate >= 99.0
+        and read_success_rate >= 99.0
+        and not stats["corruption_detected"]
+        and stats.get("integrity_check") == "ok"
+    ):
         print("✅ TEST PASSED - Database configuration is resilient")
     else:
         print("❌ TEST FAILED - Issues detected with database configuration")
@@ -431,17 +460,18 @@ def print_results(stats: dict):
             print("   - Database corruption detected")
         if stats.get("integrity_check") != "ok":
             print(f"   - Integrity check failed: {stats.get('integrity_check')}")
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
     # Allow overriding config from command line
     if len(sys.argv) > 1:
         import json
+
         try:
             custom_config = json.loads(sys.argv[1])
             TEST_CONFIG.update(custom_config)
-        except:
+        except Exception:
             print("Usage: python stress_test.py ['{\"num_writers\": 10, ...}']")
 
     # Run the stress test
@@ -451,8 +481,8 @@ if __name__ == "__main__":
     print_results(results)
 
     # Clean up test database
-    if os.path.exists(TEST_CONFIG['db_path']):
-        os.remove(TEST_CONFIG['db_path'])
+    if Path.exists(TEST_CONFIG["db_path"]):
+        Path.unlink(TEST_CONFIG["db_path"])
 
     # Exit with appropriate code
     sys.exit(0 if results.get("integrity_check") == "ok" else 1)
