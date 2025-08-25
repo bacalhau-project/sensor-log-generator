@@ -72,12 +72,12 @@ The system uses a nested identity format:
 - **Database commits every 10 seconds** - provides consistent read windows
 - **Always use read-only mode for reading**: `sqlite3 "file:data/sensor_data.db?mode=ro"`
 
-## Development Guidelines  
-- **CRITICAL: Always run pre-commit hooks before committing code**
-  - Setup: `./scripts/setup-pre-commit.sh`
-  - Manual run: `uv run pre-commit run --all-files`
-  - Pre-commit runs: syntax checks, linting, type checking, and fast tests
-  - Pre-push runs: full test suite with coverage requirements
+## Development Guidelines
+- **CRITICAL: Pre-commit hooks are configured for practical development**
+  - Setup: `uv run scripts/setup.py --dev`
+  - On commit: Auto-fixes formatting, checks syntax, removes trailing whitespace
+  - On push: Runs tests and security scans
+  - Manual full check: `uv run scripts/check.py --fix`
 - Always use ruff for python lint checking
 - Always use uv, instead of python, when writing python scripts
 - Make sure each CLI line is correctly terminated or has a \ for continuation at 80 characters

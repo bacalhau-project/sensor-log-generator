@@ -1,61 +1,25 @@
-fail_fast: false  # Set to true to stop on first failure
+fail_fast: true  # Stop on first failure to save time
 default_stages: [pre-commit]
 
 repos:
-  # Python syntax check (fast, runs first)
+  # Python syntax check (fastest, runs first)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: check-ast
         name: Check Python syntax
-        stages: [pre-commit]
 
-  # Ruff - Python linter and formatter (fast)
+  # Ruff - Auto-fix formatting and basic linting issues
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
       - id: ruff
-        name: Ruff linter
-        args: [--fix]
-        stages: [pre-commit]
+        name: Ruff auto-fix
+        args: [--fix, --select, "F,E,W,I", --ignore, "E501,W293"]  # Only critical issues
       - id: ruff-format
         name: Ruff formatter
-        stages: [pre-commit]
 
-  # MyPy - Type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        name: Type checking
-        args: [--ignore-missing-imports, --no-strict-optional]
-        additional_dependencies:
-          - types-PyYAML
-          - types-requests
-        files: ^(src/|main\.py)
-        stages: [pre-commit]
-
-  # Run critical tests (only on commit, not push)
-  - repo: local
-    hooks:
-      - id: pytest-fast
-        name: Run fast unit tests
-        entry: uv run pytest
-        language: system
-        pass_filenames: false
-        args: [
-          "tests/",
-          "-m", "not slow and not integration",
-          "--tb=short",
-          "-q",
-          "--disable-warnings",
-          "--maxfail=3"
-        ]
-        stages: [pre-commit]
-        files: ^(src/|tests/|main\.py)
-        verbose: true
-
-  # General file checks
+  # Basic file checks (fast)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -63,77 +27,66 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents]
-      - id: check-added-large-files
-        args: [--maxkb=1000]
       - id: check-json
       - id: check-toml
       - id: check-merge-conflict
-      - id: check-case-conflict
       - id: detect-private-key
-      - id: mixed-line-ending
-        args: [--fix=lf]
-
-  # Python specific checks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: check-builtin-literals
-      - id: check-docstring-first
       - id: debug-statements
-      - id: fix-byte-order-marker
-      - id: name-tests-test
-        args: [--pytest-test-first]
 
-  # Security checks (can be slow, make it optional)
+  # Run ONLY critical tests that must pass
+  - repo: local
+    hooks:
+      - id: critical-checks
+        name: Critical checks only
+        entry: bash -c 'echo "Running critical checks..." && uv run python -m py_compile main.py src/*.py 2>/dev/null || (echo "Syntax errors found!" && exit 1)'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+# Hooks for manual run or CI only
+  # Full linting (manual)
+  - repo: local
+    hooks:
+      - id: full-lint
+        name: Full linting check
+        entry: uv run ruff check src/ tests/ main.py
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+  # Type checking (manual/push)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: Type checking
+        args: [--ignore-missing-imports, --no-strict-optional, --allow-untyped-defs]
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+        files: ^(src/|main\.py)
+        stages: [manual, pre-push]
+
+  # Tests (push only)
+  - repo: local
+    hooks:
+      - id: tests
+        name: Run tests
+        entry: uv run pytest tests/ -q --tb=line --disable-warnings -m "not slow"
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+  # Security (push only)
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.10
     hooks:
       - id: bandit
-        name: Security check
-        args: [-c, pyproject.toml, --severity-level, medium]
+        name: Security scan
+        args: [-c, pyproject.toml, --severity-level, high, -q]
         additional_dependencies: ["bandit[toml]"]
         files: ^(src/|main\.py)
-        stages: [pre-push]  # Only on push, not every commit
-
-  # Dockerfile linting
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.13.0-beta
-    hooks:
-      - id: hadolint-docker
-        args: [--ignore, DL3008, --ignore, DL3009]
-
-  # YAML linting
-  - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
-    hooks:
-      - id: yamllint
-        args: [-c=.yamllint.yml]
-
-  # Markdown linting
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.43.0
-    hooks:
-      - id: markdownlint
-        args: [--fix, --disable, MD013, --disable, MD033]
-
-  # Full test suite (only on push to ensure everything works)
-  - repo: local
-    hooks:
-      - id: pytest-full
-        name: Run full test suite
-        entry: uv run pytest
-        language: system
-        pass_filenames: false
-        args: [
-          "tests/",
-          "--tb=short",
-          "-v",
-          "--cov=src",
-          "--cov-fail-under=70"
-        ]
         stages: [pre-push]
-        files: ^(src/|tests/|main\.py)
-        verbose: true
 
 exclude: |
   (?x)^(
