@@ -10,8 +10,8 @@
 # ///
 
 """
-Docker multi-platform build and push script with semantic versioning.
-Replaces the bash build.sh script with Python implementation.
+Docker Compose-based multi-platform build and push script with semantic versioning.
+Now uses Docker Compose for all build operations instead of direct Docker commands.
 """
 
 import os
@@ -19,9 +19,11 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import click
 import semver
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -34,10 +36,10 @@ class BuildError(Exception):
     pass
 
 
-class DockerBuilder:
+class DockerComposeBuilder:
     def __init__(
         self,
-        image_name: str | None = None,
+        image_name: Optional[str] = None,
         platforms: str = "linux/amd64,linux/arm64",
         dockerfile: str = "Dockerfile",
         registry: str = "ghcr.io",
@@ -45,6 +47,8 @@ class DockerBuilder:
         skip_push: bool = False,
         build_cache: bool = True,
         require_login: bool = True,
+        compose_file: str = "docker-compose.build.yml",
+        dev_mode: bool = False,
     ):
         self.image_name = image_name or self._get_default_image_name()
         self.platforms = platforms
@@ -54,28 +58,31 @@ class DockerBuilder:
         self.skip_push = skip_push
         self.build_cache = build_cache
         self.require_login = require_login
+        self.compose_file = compose_file
+        self.dev_mode = dev_mode
         self.github_user = os.environ.get("GITHUB_USER") or self._get_git_user()
         self.github_token = os.environ.get("GITHUB_TOKEN")
+        self.env_vars = {}
 
     def _get_default_image_name(self) -> str:
         """Get image name from git repository or current directory"""
-        # Try to get from git remote first
         try:
-            result = self._run_command(["git", "tag", "--list", "v*"], check=False, verbose=False)
+            # Get git remote URL
+            result = self._run_command(
+                ["git", "remote", "get-url", "origin"], check=False, verbose=False
+            )
             if result.returncode == 0:
                 remote_url = result.stdout.strip()
                 # Parse GitHub URL
                 if "github.com" in remote_url:
                     # Handle both HTTPS and SSH URLs
                     if remote_url.startswith("https://"):
-                        # https://github.com/owner/repo.git
                         parts = (
                             remote_url.replace("https://github.com/", "")
                             .replace(".git", "")
                             .split("/")
                         )
                     elif remote_url.startswith("git@"):
-                        # git@github.com:owner/repo.git
                         parts = (
                             remote_url.replace("git@github.com:", "").replace(".git", "").split("/")
                         )
@@ -104,12 +111,40 @@ class DockerBuilder:
         return "GITHUB_USER_NOT_SET"
 
     def _run_command(
-        self, cmd: list[str], check: bool = True, verbose: bool = False
+        self, cmd: list[str], check: bool = True, verbose: bool = True
     ) -> subprocess.CompletedProcess:
         """Run a command and return the result"""
         if verbose:
             console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
         return subprocess.run(cmd, capture_output=True, text=True, check=check)
+
+    def _run_compose_command(
+        self,
+        args: list[str],
+        check: bool = True,
+        verbose: bool = True,
+        capture_output: bool = True,
+        env: dict = None,
+    ) -> subprocess.CompletedProcess:
+        """Run a docker compose command with proper environment"""
+        # Build the compose command
+        cmd = ["docker", "compose"]
+        if self.compose_file:
+            cmd.extend(["-f", self.compose_file])
+        cmd.extend(args)
+
+        if verbose:
+            console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
+
+        # Merge environment variables
+        run_env = os.environ.copy()
+        if env:
+            run_env.update(env)
+        run_env.update(self.env_vars)
+
+        return subprocess.run(
+            cmd, capture_output=capture_output, text=True, check=check, env=run_env
+        )
 
     def validate_requirements(self):
         """Validate all requirements are met"""
@@ -123,6 +158,22 @@ class DockerBuilder:
             if subprocess.run(["which", cmd], capture_output=True).returncode != 0:
                 raise BuildError(msg)
 
+        # Check Docker Compose support
+        result = self._run_command(["docker", "compose", "version"], check=False, verbose=False)
+        if result.returncode != 0:
+            # Try docker-compose (hyphenated)
+            result = self._run_command(["docker-compose", "version"], check=False, verbose=False)
+            if result.returncode != 0:
+                raise BuildError(
+                    "Docker Compose is required but not installed.\n"
+                    "Please install Docker Desktop or Docker Compose plugin."
+                )
+
+        # Check compose file exists (create if it doesn't)
+        if not Path(self.compose_file).exists():
+            console.print(f"[yellow]Creating {self.compose_file}...[/yellow]")
+            self._create_compose_build_file()
+
         # Check dockerfile exists
         if not Path(self.dockerfile).exists():
             raise BuildError(f"Dockerfile not found at {self.dockerfile}")
@@ -135,14 +186,54 @@ class DockerBuilder:
         # Check buildx support
         result = self._run_command(["docker", "buildx", "version"], check=False, verbose=False)
         if result.returncode != 0:
-            raise BuildError(
-                "Docker buildx support is required. Please ensure:\n"
-                "1. Docker Desktop is installed and running\n"
-                "2. Enable experimental features in Docker settings\n"
-                "3. Restart Docker Desktop"
+            console.print(
+                "[yellow]![/yellow] Docker buildx support not available, "
+                "multi-platform builds may be limited"
             )
 
         console.print("[green]✓[/green] All requirements validated")
+
+    def _create_compose_build_file(self):
+        """Create a docker-compose.build.yml file if it doesn't exist"""
+        # For Docker Compose, platforms should be specified as separate items
+        # We'll handle this dynamically based on the platforms string
+        platform_list = self.platforms.split(",")
+
+        compose_content = {
+            "services": {
+                "sensor-simulator": {
+                    "image": "${IMAGE_TAG:-ghcr.io/bacalhau-project/sensor-log-generator:latest}",
+                    "build": {
+                        "context": ".",
+                        "dockerfile": "${DOCKERFILE:-Dockerfile}",
+                        "platforms": platform_list,
+                        "cache_from": [
+                            "type=registry,ref=${CACHE_FROM:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache}"
+                        ],
+                        "cache_to": [
+                            "type=registry,ref=${CACHE_TO:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache},mode=max"
+                        ],
+                        "labels": {
+                            "org.opencontainers.image.title": "Sensor Log Generator",
+                            "org.opencontainers.image.description": "High-performance sensor data simulator",
+                            "org.opencontainers.image.version": "${VERSION:-dev}",
+                            "org.opencontainers.image.created": "${BUILD_DATE}",
+                            "org.opencontainers.image.revision": "${GIT_COMMIT}",
+                        },
+                        "args": {
+                            "BUILD_DATE": "${BUILD_DATE}",
+                            "VERSION": "${VERSION:-dev}",
+                            "GIT_COMMIT": "${GIT_COMMIT}",
+                        },
+                    },
+                }
+            }
+        }
+
+        with open(self.compose_file, "w") as f:
+            yaml.dump(compose_content, f, default_flow_style=False, sort_keys=False)
+
+        console.print(f"[green]✓[/green] Created {self.compose_file}")
 
     def check_docker_login(self):
         """Check and perform Docker registry login"""
@@ -194,9 +285,18 @@ class DockerBuilder:
 
         console.print("[green]✓[/green] Successfully logged in to Docker registry")
 
-    def setup_builder(self):
-        """Setup buildx builder"""
-        console.print("[blue]Setting up buildx builder...[/blue]")
+    def setup_buildx_builder(self):
+        """Setup buildx builder for multi-platform builds"""
+        console.print("[blue]Setting up Docker Buildx for multi-platform builds...[/blue]")
+
+        # Check if buildx is available
+        result = self._run_command(["docker", "buildx", "version"], check=False, verbose=False)
+        if result.returncode != 0:
+            console.print(
+                "[yellow]![/yellow] Docker Buildx not available, "
+                "using standard Docker Compose build"
+            )
+            return False
 
         # Check if builder exists
         result = self._run_command(
@@ -213,7 +313,7 @@ class DockerBuilder:
             if "Status: running" in result.stdout:
                 console.print(f"[green]✓[/green] Using existing builder '{self.builder_name}'")
                 self._run_command(["docker", "buildx", "use", self.builder_name], verbose=False)
-                return
+                return True
             else:
                 console.print("[yellow]![/yellow] Removing non-functional builder")
                 self._run_command(
@@ -237,8 +337,9 @@ class DockerBuilder:
         )
         self._run_command(["docker", "buildx", "use", self.builder_name], verbose=False)
         console.print("[green]✓[/green] Builder created and ready")
+        return True
 
-    def get_current_version(self) -> semver.Version | None:
+    def get_current_version(self) -> Optional[semver.Version]:
         """Get the current version from git tags"""
         try:
             result = self._run_command(["git", "tag", "--list", "v*"], check=False)
@@ -261,7 +362,7 @@ class DockerBuilder:
             pass
         return None
 
-    def bump_version(self, current: semver.Version | None, bump_type: str) -> semver.Version:
+    def bump_version(self, current: Optional[semver.Version], bump_type: str) -> semver.Version:
         """Bump the version based on type"""
         if current is None:
             # Start with 1.0.0 if no version exists
@@ -286,8 +387,124 @@ class DockerBuilder:
         except ValueError as e:
             raise BuildError(f"Invalid semver format '{version_str}': {e}")
 
+    def get_git_info(self) -> tuple[str, str]:
+        """Get git commit hash and branch"""
+        commit = "unknown"
+        branch = "unknown"
+
+        try:
+            result = self._run_command(
+                ["git", "rev-parse", "--short", "HEAD"], check=False, verbose=False
+            )
+            if result.returncode == 0:
+                commit = result.stdout.strip()
+
+            result = self._run_command(
+                ["git", "branch", "--show-current"], check=False, verbose=False
+            )
+            if result.returncode == 0:
+                branch = result.stdout.strip()
+        except Exception:
+            pass
+
+        return commit, branch
+
+    def prepare_build_env(self, version: semver.Version, datetime_tag: str) -> list[str]:
+        """Prepare environment variables for the build"""
+        commit, branch = self.get_git_info()
+        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+
+        base_image = f"{self.registry}/{self.image_name}"
+
+        # Prepare tags based on environment
+        tags = []
+        if self.dev_mode or not is_ci:
+            # Development build
+            dev_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            tags = [
+                f"{base_image}:dev",
+                f"{base_image}:dev-{dev_timestamp}",
+                f"{base_image}:{version}-dev",
+            ]
+            console.print("[yellow]📦 Development mode - building for local testing[/yellow]")
+        else:
+            # Production build
+            tags = [
+                f"{base_image}:latest",
+                f"{base_image}:{datetime_tag}",
+                f"{base_image}:{version}",
+                f"{base_image}:v{version}",
+            ]
+
+        # Add git commit tag
+        if commit != "unknown":
+            tags.append(f"{base_image}:{commit}")
+
+        # Build environment variables
+        self.env_vars = {
+            "IMAGE_TAG": tags[0],
+            "PLATFORMS": self.platforms,
+            "DOCKERFILE": self.dockerfile,
+            "VERSION": str(version),
+            "BUILD_DATE": datetime.now().isoformat(),
+            "GIT_COMMIT": commit,
+            "GIT_BRANCH": branch,
+            "REGISTRY": self.registry,
+            "IMAGE_NAME": self.image_name,
+            "CACHE_FROM": f"{base_image}:buildcache",
+            "CACHE_TO": f"{base_image}:buildcache",
+        }
+
+        return tags
+
+    def build_and_push_with_compose(
+        self, version: semver.Version, datetime_tag: str, tags: list[str]
+    ):
+        """Build and push images using Docker Compose"""
+        console.print(f"[blue]Building with Docker Compose for platforms: {self.platforms}[/blue]")
+        console.print("[blue]Tags:[/blue]")
+        for tag in tags:
+            console.print(f"  • {tag}")
+
+        console.print("\n[yellow]Building images... (this may take a few minutes)[/yellow]")
+
+        # Build with compose
+        build_args = ["build", "sensor-simulator"]
+
+        # Add push flag if not skipping
+        if not self.skip_push:
+            build_args.append("--push")
+
+        # Add no-cache flag if requested
+        if not self.build_cache:
+            build_args.append("--no-cache")
+
+        # Build each tag separately (Docker Compose limitation)
+        for tag in tags:
+            self.env_vars["IMAGE_TAG"] = tag
+            result = self._run_compose_command(
+                build_args,
+                check=False,
+                capture_output=False,  # Show build output
+                env=self.env_vars,
+            )
+
+            if result.returncode != 0:
+                raise BuildError(f"Build failed for tag {tag}")
+
+            console.print(f"[green]✓[/green] Built {tag}")
+
+        action = "built" if self.skip_push else "built and pushed"
+        console.print(f"\n[green]✓[/green] Successfully {action} all images")
+
+        return tags
+
     def create_git_tag(self, version: semver.Version):
         """Create a git tag for the version"""
+        if self.dev_mode:
+            console.print("[dim]Skipping git tag creation in dev mode[/dim]")
+            return
+
         tag = f"v{version}"
         console.print(f"[blue]Creating git tag {tag}...[/blue]")
 
@@ -308,127 +525,46 @@ class DockerBuilder:
             self._run_command(["git", "push", "origin", tag], verbose=False)
             console.print("[green]✓[/green] Pushed tag to remote")
 
-    def build_and_push(self, version: semver.Version, datetime_tag: str):
-        """Build and push the Docker images"""
-        base_tag = f"{self.registry}/{self.image_name}"
-
-        # Check if we're in CI environment
-        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
-
-        # Prepare tags
-        tags = []
-
-        if is_ci:
-            # CI build - use standard versioning
-            tags = [
-                f"{base_tag}:latest",
-                f"{base_tag}:{datetime_tag}",
-                f"{base_tag}:{version}",
-                f"{base_tag}:v{version}",
-            ]
-        else:
-            # Local development build - add dev tag
-            dev_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            tags = [
-                f"{base_tag}:dev",
-                f"{base_tag}:dev-{dev_timestamp}",
-                f"{base_tag}:{version}-dev",
-            ]
-            console.print("[yellow]📦 Local development build - using dev tags[/yellow]")
-
-        # Add git commit hash if in git repo
-        try:
-            result = self._run_command(
-                ["git", "rev-parse", "--short", "HEAD"], check=False, verbose=False
-            )
-            if result.returncode == 0:
-                git_hash = result.stdout.strip()
-                tags.append(f"{base_tag}:{git_hash}")
-        except Exception:
-            pass
-
-        # Build command
-        build_cmd = [
-            "docker",
-            "buildx",
-            "build",
-            "--platform",
-            self.platforms,
-            "--file",
-            self.dockerfile,
-        ]
-
-        # Add tags
-        for tag in tags:
-            build_cmd.extend(["--tag", tag])
-
-        # Add cache settings
-        if self.build_cache:
-            build_cmd.extend(
-                [
-                    "--cache-from",
-                    f"type=registry,ref={base_tag}:buildcache",
-                    "--cache-to",
-                    f"type=registry,ref={base_tag}:buildcache,mode=max",
-                ]
-            )
-
-        # Add push or load flag
-        if self.skip_push:
-            build_cmd.append("--load")
-        else:
-            build_cmd.append("--push")
-
-        # Add build context
-        build_cmd.append(".")
-
-        # Execute build
-        console.print(f"[blue]Building for platforms: {self.platforms}[/blue]")
-        console.print("[blue]Tags:[/blue]")
-        for tag in tags:
-            console.print(f"  • {tag}")
-
-        console.print("\n[yellow]Building images... (this may take a few minutes)[/yellow]")
-        result = subprocess.run(build_cmd, capture_output=False, text=True, check=False)
-        if result.returncode != 0:
-            raise BuildError(f"Build failed with exit code {result.returncode}")
-
-        action = "built" if self.skip_push else "built and pushed"
-        console.print(f"\n[green]✓[/green] Successfully {action} images")
-
-        return tags
-
-    def write_tag_files(self, version: semver.Version, datetime_tag: str):
+    def write_tag_files(self, version: semver.Version, datetime_tag: str, tags: list[str]):
         """Write tag information to files"""
-        full_image_version = f"{self.registry}/{self.image_name}:{version}"
-        full_image_latest = f"{self.registry}/{self.image_name}:latest"
-
         console.print("[blue]Writing tag information to files...[/blue]")
 
         Path(".latest-image-tag").write_text(f"{datetime_tag}\n")
-        Path(".latest-registry-image").write_text(f"{full_image_version}\n")
-        Path(".latest-registry-image-latest").write_text(f"{full_image_latest}\n")
         Path(".latest-semver").write_text(f"{version}\n")
 
+        # Write first tag as the main registry image
+        if tags:
+            Path(".latest-registry-image").write_text(f"{tags[0]}\n")
+
+        # Write compose environment file
+        env_content = []
+        for key, value in self.env_vars.items():
+            env_content.append(f"{key}={value}")
+        Path(".env.build").write_text("\n".join(env_content) + "\n")
+
         console.print(f"  → .latest-image-tag: {datetime_tag}")
-        console.print(f"  → .latest-registry-image: {full_image_version}")
-        console.print(f"  → .latest-registry-image-latest: {full_image_latest}")
         console.print(f"  → .latest-semver: {version}")
+        console.print(f"  → .latest-registry-image: {tags[0] if tags else 'N/A'}")
+        console.print("  → .env.build: Build environment saved")
 
     def print_summary(self, version: semver.Version, datetime_tag: str, tags: list[str]):
         """Print build summary"""
         is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
 
-        table = Table(title="Build Summary", show_header=True)
+        table = Table(title="Docker Compose Build Summary", show_header=True)
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
 
+        table.add_row("Build System", "Docker Compose")
+        table.add_row("Compose File", self.compose_file)
         table.add_row("Image Name", self.image_name)
         table.add_row("Registry", self.registry)
-        table.add_row("Build Type", "CI/CD" if is_ci else "Local Development")
+        table.add_row("Build Mode", "Development" if self.dev_mode else "Production")
+        table.add_row("Build Type", "CI/CD" if is_ci else "Local")
         table.add_row("Semantic Version", str(version))
         table.add_row("DateTime Tag", datetime_tag)
         table.add_row("Platforms", self.platforms)
+        table.add_row("Tags Created", str(len(tags)))
         table.add_row("Push Status", "Skipped" if self.skip_push else "Pushed")
 
         console.print(table)
@@ -436,36 +572,28 @@ class DockerBuilder:
         if not self.skip_push:
             console.print("\n[green]Ready to run! Copy and paste this command:[/green]\n")
 
-            console.print("[dim]# Run the sensor locally:[/dim]")
-
             # Use appropriate tag based on build type
-            tag_to_use = "dev" if not is_ci else "latest"
+            tag_to_use = "dev" if self.dev_mode else "latest"
 
+            console.print("[dim]# Run with Docker Compose:[/dim]")
+            console.print("docker compose up -d")
+
+            console.print("\n[dim]# Or run with Docker directly:[/dim]")
             run_cmd = f"""docker run --rm \\
   --name sensor-log-generator \\
   -v "$(pwd)/data":/app/data \\
   -v "$(pwd)/config":/app/config \\
   -e CONFIG_FILE=/app/config/config.yaml \\
-  -e IDENTITY_FILE=/app/config/identity.json \\
+  -e IDENTITY_FILE=/app/config/node-identity.json \\
   {self.registry}/{self.image_name}:{tag_to_use}"""
             console.print(run_cmd)
-
-            console.print("\n[dim]# Or with custom sensor ID and location:[/dim]")
-            custom_cmd = f"""docker run --rm \\
-  --name sensor-log-generator \\
-  -v "$(pwd)/data":/app/data \\
-  -e SENSOR_ID=CUSTOM001 \\
-  -e SENSOR_LOCATION="Custom Location" \\
-  {self.registry}/{self.image_name}:{tag_to_use}"""
-            console.print(custom_cmd)
 
     def cleanup(self):
         """Cleanup builder if needed"""
         try:
-            if hasattr(self, "builder_name"):
-                subprocess.run(
-                    ["docker", "buildx", "rm", self.builder_name], capture_output=True, check=False
-                )
+            if hasattr(self, "builder_name") and not self.dev_mode:
+                # Keep builder for future use unless explicitly removed
+                pass
         except Exception:
             pass
 
@@ -473,7 +601,10 @@ class DockerBuilder:
 @click.command()
 @click.option("--image-name", envvar="IMAGE_NAME", help="Docker image name")
 @click.option(
-    "--platforms", envvar="PLATFORMS", default="linux/amd64,linux/arm64", help="Target platforms"
+    "--platforms",
+    envvar="PLATFORMS",
+    default="linux/amd64,linux/arm64",
+    help="Target platforms (comma-separated)",
 )
 @click.option("--dockerfile", envvar="DOCKERFILE", default="Dockerfile", help="Path to Dockerfile")
 @click.option("--registry", envvar="REGISTRY", default="ghcr.io", help="Docker registry")
@@ -486,45 +617,70 @@ class DockerBuilder:
     help="Version bump type",
 )
 @click.option(
+    "--dev/--prod",
+    "dev_mode",
+    envvar="DEV_MODE",
+    default=False,
+    help="Build in development mode (faster, single platform)",
+)
+@click.option(
     "--skip-push/--push", envvar="SKIP_PUSH", default=False, help="Skip pushing to registry"
 )
-@click.option("--no-cache", "no_cache", envvar="NO_CACHE", is_flag=True, help="Disable build cache")
+@click.option("--no-cache", is_flag=True, envvar="NO_CACHE", help="Disable build cache")
+@click.option("--no-login", is_flag=True, envvar="NO_LOGIN", help="Skip Docker registry login")
 @click.option(
-    "--no-login", "no_login", envvar="NO_LOGIN", is_flag=True, help="Skip Docker registry login"
-)
-@click.option(
-    "--builder-name", envvar="BUILDER_NAME", default="multiarch-builder", help="Buildx builder name"
+    "--compose-file",
+    envvar="COMPOSE_FILE",
+    default="docker-compose.build.yml",
+    help="Docker Compose file for building",
 )
 def main(
-    image_name: str | None,
+    image_name: Optional[str],
     platforms: str,
     dockerfile: str,
     registry: str,
-    version_tag: str | None,
+    version_tag: Optional[str],
     version_bump: str,
+    dev_mode: bool,
     skip_push: bool,
     no_cache: bool,
     no_login: bool,
-    builder_name: str,
+    compose_file: str,
 ):
     """
-    Build and push multi-platform Docker images with semantic versioning.
+    Build and push multi-platform Docker images using Docker Compose.
 
-    This script replaces the bash build.sh with Python implementation,
-    adding proper semantic versioning support.
+    This script uses Docker Compose for orchestrating multi-platform builds
+    with proper semantic versioning, caching, and registry management.
+
+    Examples:
+        # Production build with auto version bump
+        ./build.py
+
+        # Development build (local only, single platform)
+        ./build.py --dev --skip-push
+
+        # Build specific version
+        ./build.py --version-tag 2.0.0
+
+        # Build for specific platforms
+        ./build.py --platforms linux/amd64
     """
 
-    console.print("\n[bold blue]🐳 Docker Multi-Platform Builder[/bold blue]")
+    console.print("\n[bold blue]🐳 Docker Compose Multi-Platform Builder[/bold blue]")
+    console.print("[dim]Using Docker Compose for orchestrated builds[/dim]")
 
-    builder = DockerBuilder(
+    builder = DockerComposeBuilder(
         image_name=image_name,
         platforms=platforms,
         dockerfile=dockerfile,
         registry=registry,
-        builder_name=builder_name,
+        builder_name="multiarch-builder",
         skip_push=skip_push,
         build_cache=not no_cache,
         require_login=not no_login,
+        compose_file=compose_file,
+        dev_mode=dev_mode,
     )
 
     try:
@@ -535,8 +691,8 @@ def main(
         if not skip_push:
             builder.check_docker_login()
 
-        # Setup builder
-        builder.setup_builder()
+        # Setup buildx builder
+        builder.setup_buildx_builder()
 
         # Determine version
         if version_tag:
@@ -557,15 +713,18 @@ def main(
         # Generate datetime tag
         datetime_tag = datetime.now().strftime("%y%m%d%H%M")
 
-        # Build and push
-        tags = builder.build_and_push(version, datetime_tag)
+        # Prepare build environment
+        tags = builder.prepare_build_env(version, datetime_tag)
+
+        # Build and push with Docker Compose
+        tags = builder.build_and_push_with_compose(version, datetime_tag, tags)
 
         # Create git tag
-        if not skip_push:
+        if not skip_push and not dev_mode:
             builder.create_git_tag(version)
 
         # Write tag files
-        builder.write_tag_files(version, datetime_tag)
+        builder.write_tag_files(version, datetime_tag, tags)
 
         # Print summary
         builder.print_summary(version, datetime_tag, tags)
