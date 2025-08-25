@@ -98,7 +98,7 @@ class SensorDatabase:
             db_dir.mkdir(parents=True, exist_ok=True)
 
         # Connect to database
-        self.conn = sqlite3.connect(self.db_path, timeout=30.0)
+        self.conn = sqlite3.connect(self.db_path, timeout=5.0)
         self.conn.row_factory = sqlite3.Row
 
         # Set pragmas for performance
@@ -171,6 +171,7 @@ class SensorDatabase:
         if not self.batch_buffer:
             return 0
 
+        assert self.conn is not None
         cursor = self.conn.cursor()
 
         # Prepare data for insertion
@@ -223,6 +224,7 @@ class SensorDatabase:
             batch_data,
         )
 
+        assert self.conn is not None
         self.conn.commit()
 
         count = len(self.batch_buffer)
@@ -265,6 +267,7 @@ class SensorDatabase:
 
     def get_readings(self, limit: int = 100, offset: int = 0) -> list[dict]:
         """Get readings from the database."""
+        assert self.conn is not None
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -284,6 +287,7 @@ class SensorDatabase:
 
     def get_unsynced_readings(self, limit: int = 100) -> list[dict]:
         """Get unsynced readings."""
+        assert self.conn is not None
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -307,16 +311,19 @@ class SensorDatabase:
         if not reading_ids:
             return
 
+        assert self.conn is not None
         cursor = self.conn.cursor()
         placeholders = ",".join("?" * len(reading_ids))
         cursor.execute(
             f"UPDATE sensor_readings SET synced = 1 WHERE id IN ({placeholders})", reading_ids
         )
+        assert self.conn is not None
         self.conn.commit()
         cursor.close()
 
     def get_reading_stats(self) -> dict:
         """Get basic statistics."""
+        assert self.conn is not None
         cursor = self.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM sensor_readings")
         total = cursor.fetchone()[0]
@@ -353,6 +360,7 @@ class SensorDatabase:
     def is_healthy(self) -> bool:
         """Check if database is healthy."""
         try:
+            assert self.conn is not None
             cursor = self.conn.cursor()
             cursor.execute("SELECT 1")
             result = cursor.fetchone()
