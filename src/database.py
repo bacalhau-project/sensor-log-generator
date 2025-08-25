@@ -1,5 +1,4 @@
 import atexit
-import contextlib
 import logging
 import os
 import platform
@@ -634,14 +633,37 @@ class SensorDatabase:
         """Register handlers for graceful shutdown with data commit."""
 
         def shutdown_handler():
-            """Handler to ensure final commit on shutdown."""
+            """Commit any pending data before shutdown."""
             try:
-                self.logger.info("Shutdown detected, executing final data checkpoint...")
-                self.stop_background_commit_thread()
-                self.conn_manager.checkpoint("TRUNCATE")  # TRUNCATE for WAL, commit for DELETE
-                self.close()
-            except Exception as e:
-                self.logger.exception(f"Error during shutdown commit: {e}")
+                # Check if logger exists and is not closed
+                if hasattr(self, "logger"):
+                    try:
+                        self.logger.info("Shutdown detected, executing final data checkpoint...")
+                    except Exception:
+                        pass  # Logger might be closed
+
+                # Stop background thread if it exists
+                if hasattr(self, "stop_background_commit_thread"):
+                    try:
+                        self.stop_background_commit_thread()
+                    except Exception:
+                        pass
+
+                # Checkpoint if conn_manager exists
+                if hasattr(self, "conn_manager") and self.conn_manager:
+                    try:
+                        self.conn_manager.checkpoint("TRUNCATE")
+                    except Exception:
+                        pass
+
+                # Close if method exists
+                if hasattr(self, "close"):
+                    try:
+                        self.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass  # Ignore all errors during shutdown
 
         # Register with atexit
         atexit.register(shutdown_handler)
@@ -1404,15 +1426,20 @@ class SensorDatabase:
     def close(self):
         """Close the database connection for the current thread with final checkpoint."""
         try:
+            # Check if logger exists
+            if not hasattr(self, "logger"):
+                return
+
             self.logger.info("Closing database connection...")
 
             # Commit any pending batch
-            if self.batch_buffer:
+            if hasattr(self, "batch_buffer") and self.batch_buffer:
                 self.logger.info(f"Committing {len(self.batch_buffer)} pending writes...")
-                self.commit_batch()
+                if hasattr(self, "commit_batch"):
+                    self.commit_batch()
 
             # Try to flush failure buffer one last time
-            if self.failure_buffer:
+            if hasattr(self, "failure_buffer") and self.failure_buffer:
                 self.logger.info(
                     f"Attempting final flush of {len(self.failure_buffer)} failed writes..."
                 )
@@ -1440,26 +1467,35 @@ class SensorDatabase:
                         self.logger.exception(f"Failed to save recovery file: {e}")
 
             # Force final checkpoint/commit for maximum durability
-            self.logger.info("Executing final data checkpoint...")
-            self.conn_manager.checkpoint("TRUNCATE")  # TRUNCATE for WAL, commit for DELETE
-            self.logger.info("Final checkpoint complete")
+            if hasattr(self, "conn_manager") and self.conn_manager:
+                self.logger.info("Executing final data checkpoint...")
+                try:
+                    self.conn_manager.checkpoint("TRUNCATE")  # TRUNCATE for WAL, commit for DELETE
+                    self.logger.info("Final checkpoint complete")
+                except Exception:
+                    pass  # Ignore checkpoint errors
 
             # Get final statistics before closing
-            try:
-                with self.conn_manager.get_connection() as conn:
-                    # Set synchronous to FULL for final operations
-                    conn.execute("PRAGMA synchronous=FULL;")
-                    count = conn.execute("SELECT COUNT(*) FROM sensor_readings").fetchone()[0]
-                    self.logger.info(f"Database contains {count} total readings at shutdown")
-            except Exception as e:
-                self.logger.warning(f"Could not get final count: {e}")
+            if hasattr(self, "conn_manager") and self.conn_manager:
+                try:
+                    with self.conn_manager.get_connection() as conn:
+                        # Set synchronous to FULL for final operations
+                        conn.execute("PRAGMA synchronous=FULL;")
+                        count = conn.execute("SELECT COUNT(*) FROM sensor_readings").fetchone()[0]
+                        self.logger.info(f"Database contains {count} total readings at shutdown")
+                except Exception as e:
+                    self.logger.warning(f"Could not get final count: {e}")
 
             # Close the connection manager's thread connection
-            self.conn_manager.close_thread_connection()
-            self.logger.info("Database connection closed successfully")
+            if hasattr(self, "conn_manager") and self.conn_manager:
+                try:
+                    self.conn_manager.close_thread_connection()
+                    self.logger.info("Database connection closed successfully")
+                except Exception:
+                    pass  # Ignore close errors
 
-        except Exception as e:
-            self.logger.exception(f"Error closing database connection: {e}")
+        except Exception:
+            pass  # Silently ignore all errors during close
 
     @retry_on_error()
     def get_database_stats(self) -> dict:
@@ -2008,7 +2044,7 @@ class SensorDatabase:
     def __del__(self):
         """Clean up database connections when the object is destroyed."""
         try:
-            self.close()
-        except Exception as e:
-            contextlib.suppress(e)  # Suppress any exceptions during cleanup
-            pass
+            if hasattr(self, "close"):
+                self.close()
+        except Exception:
+            pass  # Ignore all errors during cleanup
