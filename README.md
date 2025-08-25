@@ -184,6 +184,15 @@ uv run pytest tests/
 git clone <repository-url>
 cd sensor-log-generator
 
+# IMPORTANT: Setup development environment (includes pre-commit hooks)
+uv run scripts/setup.py --dev
+
+# Run all checks before committing
+uv run scripts/check.py
+
+# Auto-fix linting issues
+uv run scripts/check.py --fix
+
 # Build Docker image
 docker build -t sensor-simulator .
 
@@ -192,6 +201,27 @@ docker build -t sensor-simulator .
 
 # Test the container
 ./test_container.sh
+```
+
+### Development Workflow
+
+```bash
+# Setup (first time only)
+uv run scripts/setup.py --dev  # CRITICAL: Sets up environment and pre-commit hooks
+
+# Before committing
+uv run scripts/check.py        # Runs lint, typecheck, and fast tests
+uv run scripts/check.py --fix  # Auto-fix linting issues
+
+# Manual pre-commit run
+uv run pre-commit run --all-files  # Runs all pre-commit hooks on all files
+
+# Skip hooks in emergency (NOT RECOMMENDED)
+git commit --no-verify -m "emergency fix"
+
+# Note: After setup, checks run automatically on commit!
+# - Fast checks run on every commit
+# - Full test suite runs on push
 ```
 
 ## 📋 Configuration

@@ -73,8 +73,14 @@ The system uses a nested identity format:
 - **Always use read-only mode for reading**: `sqlite3 "file:data/sensor_data.db?mode=ro"`
 
 ## Development Guidelines  
+- **CRITICAL: Always run pre-commit hooks before committing code**
+  - Setup: `./scripts/setup-pre-commit.sh`
+  - Manual run: `uv run pre-commit run --all-files`
+  - Pre-commit runs: syntax checks, linting, type checking, and fast tests
+  - Pre-push runs: full test suite with coverage requirements
 - Always use ruff for python lint checking
 - Always use uv, instead of python, when writing python scripts
 - Make sure each CLI line is correctly terminated or has a \ for continuation at 80 characters
 - Ensure database mode is logged at startup
 - Use read-only connections when reading from the database
+- **Never use `git commit --no-verify` unless absolutely necessary**

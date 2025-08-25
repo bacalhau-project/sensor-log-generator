@@ -1,28 +1,38 @@
-.PHONY: help install install-dev lint format typecheck test test-cov clean build run pre-commit ci-local
+.PHONY: help install install-dev setup-hooks lint format typecheck test test-cov clean build run pre-commit ci-local check-all
 
 # Default target
 help:
 	@echo "Available targets:"
 	@echo "  install       - Install production dependencies"
 	@echo "  install-dev   - Install all dependencies including dev tools"
+	@echo "  setup-hooks   - Setup git pre-commit hooks (IMPORTANT: Run this first!)"
 	@echo "  lint          - Run ruff linter"
 	@echo "  format        - Format code with ruff"
 	@echo "  typecheck     - Run mypy type checker"
 	@echo "  test          - Run tests"
 	@echo "  test-cov      - Run tests with coverage"
+	@echo "  check-all     - Run all checks (lint, typecheck, tests)"
 	@echo "  clean         - Clean up generated files"
 	@echo "  build         - Build Docker container"
 	@echo "  run           - Run the simulator locally"
-	@echo "  pre-commit    - Install and run pre-commit hooks"
+	@echo "  pre-commit    - Run pre-commit hooks on all files"
 	@echo "  ci-local      - Run full CI pipeline locally"
 
 # Install dependencies
 install:
 	uv sync --frozen
 
-install-dev:
+install-dev: setup-hooks
 	uv sync --frozen --all-extras
 	uv pip install -e .
+
+# Setup git hooks (IMPORTANT - prevents broken commits)
+setup-hooks:
+	@echo "🔧 Setting up pre-commit hooks..."
+	@uv pip install pre-commit
+	@uv run pre-commit install --install-hooks
+	@uv run pre-commit install --hook-type pre-push
+	@echo "✅ Pre-commit hooks installed! Tests will run before each commit."
 
 # Code quality checks
 lint:
@@ -39,6 +49,9 @@ typecheck:
 test:
 	uv run pytest tests/ -v
 
+test-fast:
+	uv run pytest tests/ -m "not slow and not integration" -q --tb=short --disable-warnings
+
 test-cov:
 	uv run pytest tests/ -v --cov=src --cov-report=term --cov-report=html
 
@@ -47,6 +60,10 @@ test-integration:
 
 test-unit:
 	uv run pytest tests/ -v -m "not integration"
+
+# Run all checks (what pre-commit will do)
+check-all: lint typecheck test-fast
+	@echo "✅ All checks passed!"
 
 # Clean up
 clean:
