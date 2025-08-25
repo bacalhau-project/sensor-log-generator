@@ -315,13 +315,29 @@ class DockerBuilder:
         """Build and push the Docker images"""
         base_tag = f"{self.registry}/{self.image_name}"
 
+        # Check if we're in CI environment
+        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+
         # Prepare tags
-        tags = [
-            f"{base_tag}:latest",
-            f"{base_tag}:{datetime_tag}",
-            f"{base_tag}:{version}",
-            f"{base_tag}:v{version}",
-        ]
+        tags = []
+
+        if is_ci:
+            # CI build - use standard versioning
+            tags = [
+                f"{base_tag}:latest",
+                f"{base_tag}:{datetime_tag}",
+                f"{base_tag}:{version}",
+                f"{base_tag}:v{version}",
+            ]
+        else:
+            # Local development build - add dev tag
+            dev_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            tags = [
+                f"{base_tag}:dev",
+                f"{base_tag}:dev-{dev_timestamp}",
+                f"{base_tag}:{version}-dev",
+            ]
+            console.print(f"[yellow]📦 Local development build - using dev tags[/yellow]")
 
         # Add git commit hash if in git repo
         try:
@@ -404,12 +420,15 @@ class DockerBuilder:
 
     def print_summary(self, version: semver.Version, datetime_tag: str, tags: List[str]):
         """Print build summary"""
+        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+
         table = Table(title="Build Summary", show_header=True)
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
 
         table.add_row("Image Name", self.image_name)
         table.add_row("Registry", self.registry)
+        table.add_row("Build Type", "CI/CD" if is_ci else "Local Development")
         table.add_row("Semantic Version", str(version))
         table.add_row("DateTime Tag", datetime_tag)
         table.add_row("Platforms", self.platforms)
@@ -421,13 +440,17 @@ class DockerBuilder:
             console.print("\n[green]Ready to run! Copy and paste this command:[/green]\n")
 
             console.print("[dim]# Run the sensor locally:[/dim]")
+
+            # Use appropriate tag based on build type
+            tag_to_use = "dev" if not is_ci else "latest"
+
             run_cmd = f"""docker run --rm \\
   --name sensor-log-generator \\
   -v "$(pwd)/data":/app/data \\
   -v "$(pwd)/config":/app/config \\
   -e CONFIG_FILE=/app/config/config.yaml \\
   -e IDENTITY_FILE=/app/config/identity.json \\
-  {self.registry}/{self.image_name}:latest"""
+  {self.registry}/{self.image_name}:{tag_to_use}"""
             console.print(run_cmd)
 
             console.print("\n[dim]# Or with custom sensor ID and location:[/dim]")
@@ -436,7 +459,7 @@ class DockerBuilder:
   -v "$(pwd)/data":/app/data \\
   -e SENSOR_ID=CUSTOM001 \\
   -e SENSOR_LOCATION="Custom Location" \\
-  {self.registry}/{self.image_name}:latest"""
+  {self.registry}/{self.image_name}:{tag_to_use}"""
             console.print(custom_cmd)
 
     def cleanup(self):
