@@ -1,6 +1,7 @@
 import json
 import random
 from pathlib import Path
+from typing import Any
 
 from .safe_logger import get_safe_logger
 
@@ -42,8 +43,8 @@ class LocationGenerator:
         """
         try:
             # Get the absolute path to the cities file
-            base_dir = Path.dirname(Path.dirname(Path.abspath(__file__)))
-            cities_file_path = Path.join(base_dir, self.cities_file)
+            base_dir = Path(__file__).resolve().parent.parent
+            cities_file_path = base_dir / self.cities_file
             self.logger.info(f"Looking for cities file at: {cities_file_path}")
 
             # Try to load from file if it exists
@@ -63,7 +64,7 @@ class LocationGenerator:
                     top_cities = sorted_cities[: self.number_of_cities]
 
                     # Convert the list format to our expected dictionary format
-                    cities = {}
+                    cities: dict[str, dict[str, Any]] = {}
                     for city in top_cities:
                         # Use the full_name as the key and store the coordinates
                         city_name = city.get("full_name", f"City_{len(cities) + 1}")

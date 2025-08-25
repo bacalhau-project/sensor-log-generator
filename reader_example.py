@@ -4,15 +4,13 @@ Comprehensive example for reading from the sensor database while it's being writ
 Demonstrates both simple and advanced reading patterns for different use cases.
 """
 
-import sqlite3
-import time
-import json
-from contextlib import contextmanager
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 import argparse
+import sqlite3
 import sys
+import time
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
 
 
 class SafeSensorReader:
@@ -25,7 +23,7 @@ class SafeSensorReader:
     - Connection pooling for efficiency
     - Error recovery and retry logic
     """
-    
+
     def __init__(self, db_path: str, timeout: float = 30.0):
         """
         Initialize the reader.
@@ -37,7 +35,7 @@ class SafeSensorReader:
         self.db_path = db_path
         self.timeout = timeout
         self._conn = None
-    
+
     @contextmanager
     def get_connection(self):
         """
@@ -54,15 +52,15 @@ class SafeSensorReader:
                 uri=True,
                 timeout=self.timeout
             )
-            
+
             # Set to query-only mode for extra safety
             conn.execute("PRAGMA query_only=1;")
-            
+
             # Use WAL mode for better concurrency (reader settings)
             conn.execute("PRAGMA journal_mode=WAL;")
-            
+
             yield conn
-            
+
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
                 print(f"Database is busy, retry after delay: {e}")
@@ -74,8 +72,8 @@ class SafeSensorReader:
         finally:
             if conn:
                 conn.close()
-    
-    def read_latest(self, limit: int = 10) -> List[Dict]:
+
+    def read_latest(self, limit: int = 10) -> list[dict]:
         """
         Read the latest sensor readings.
         
@@ -95,11 +93,11 @@ class SafeSensorReader:
                 ORDER BY id DESC
                 LIMIT ?
             """, (limit,))
-            
+
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
-    
-    def read_incremental(self, last_id: int = 0, limit: int = 100) -> Tuple[List[Dict], int]:
+            return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
+    def read_incremental(self, last_id: int = 0, limit: int = 100) -> tuple[list[dict], int]:
         """
         Read new sensor data since the last known ID.
         
@@ -121,19 +119,19 @@ class SafeSensorReader:
                 ORDER BY id ASC
                 LIMIT ?
             """, (last_id, limit))
-            
+
             columns = [desc[0] for desc in cursor.description]
-            readings = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
+            readings = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
             # Get the highest ID for next iteration
             if readings:
                 max_id = max(r['id'] for r in readings)
             else:
                 max_id = last_id
-                
+
             return readings, max_id
-    
-    def read_time_range(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+
+    def read_time_range(self, start_time: datetime, end_time: datetime) -> list[dict]:
         """
         Read sensor data within a time range.
         
@@ -150,11 +148,11 @@ class SafeSensorReader:
                 WHERE timestamp BETWEEN ? AND ?
                 ORDER BY timestamp ASC
             """, (start_time.isoformat(), end_time.isoformat()))
-            
+
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
-    
-    def get_statistics(self, sensor_id: Optional[str] = None) -> Dict:
+            return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
+    def get_statistics(self, sensor_id: str | None = None) -> dict:
         """
         Get statistical summary of sensor readings.
         
@@ -171,7 +169,7 @@ class SafeSensorReader:
             else:
                 where_clause = ""
                 params = ()
-            
+
             cursor = conn.execute(f"""
                 SELECT 
                     COUNT(*) as total_readings,
@@ -187,10 +185,10 @@ class SafeSensorReader:
                 FROM sensor_readings
                 {where_clause}
             """, params)
-            
+
             row = cursor.fetchone()
             columns = [desc[0] for desc in cursor.description]
-            return dict(zip(columns, row)) if row else {}
+            return dict(zip(columns, row, strict=False)) if row else {}
 
 
 def simple_reader_example(db_path: str):
@@ -198,18 +196,18 @@ def simple_reader_example(db_path: str):
     Simple example of reading from sensor database.
     """
     print("\n=== Simple Reader Example ===")
-    
+
     # IMPORTANT: Open in read-only mode to avoid lock conflicts
     conn = sqlite3.connect(
         f"file:{db_path}?mode=ro",  # Read-only mode
         uri=True,
         timeout=30.0  # Wait up to 30 seconds if database is busy
     )
-    
+
     try:
         # Set to query-only for extra safety
         conn.execute("PRAGMA query_only=1;")
-        
+
         # Get latest 5 readings
         cursor = conn.execute("""
             SELECT id, timestamp, sensor_id, temperature, humidity
@@ -217,14 +215,14 @@ def simple_reader_example(db_path: str):
             ORDER BY id DESC
             LIMIT 5
         """)
-        
+
         readings = cursor.fetchall()
-        
+
         print(f"Found {len(readings)} readings:")
         for reading in readings:
             print(f"  ID={reading[0]}, Time={reading[1]}, Sensor={reading[2]}, "
                   f"Temp={reading[3]:.1f}°C, Humidity={reading[4]:.1f}%")
-    
+
     finally:
         conn.close()
 
@@ -234,16 +232,16 @@ def continuous_reader_example(db_path: str, duration: int = 30):
     Example of continuously reading new data as it arrives.
     """
     print(f"\n=== Continuous Reader Example (running for {duration} seconds) ===")
-    
+
     reader = SafeSensorReader(db_path)
     last_id = 0
     start_time = time.time()
-    
+
     while time.time() - start_time < duration:
         try:
             # Read new data since last check
             new_readings, last_id = reader.read_incremental(last_id, limit=10)
-            
+
             if new_readings:
                 print(f"\nFound {len(new_readings)} new readings:")
                 for reading in new_readings:
@@ -252,17 +250,17 @@ def continuous_reader_example(db_path: str, duration: int = 30):
                           f"Humidity={reading['humidity']:.1f}%")
             else:
                 print(".", end="", flush=True)
-            
+
             # Check every 2 seconds
             time.sleep(2)
-            
+
         except sqlite3.OperationalError as e:
             print(f"\nDatabase temporarily unavailable: {e}")
             time.sleep(5)
         except KeyboardInterrupt:
             print("\nStopped by user")
             break
-    
+
     print(f"\nProcessed up to ID {last_id}")
 
 
@@ -271,12 +269,12 @@ def statistics_example(db_path: str):
     Example of getting statistical summaries from the database.
     """
     print("\n=== Statistics Example ===")
-    
+
     reader = SafeSensorReader(db_path)
-    
+
     try:
         stats = reader.get_statistics()
-        
+
         if stats and stats.get('total_readings'):
             print(f"Total readings: {stats['total_readings']:,}")
             print(f"Unique sensors: {stats['unique_sensors']}")
@@ -288,7 +286,7 @@ def statistics_example(db_path: str):
             print(f"Average battery: {stats['avg_battery']:.1f}%")
         else:
             print("No data available yet")
-            
+
     except sqlite3.OperationalError as e:
         print(f"Could not read statistics: {e}")
 
@@ -315,27 +313,27 @@ def main():
         default=30,
         help="Duration for continuous mode in seconds (default: 30)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Check if database exists
     if not Path(args.db_path).exists():
         print(f"Error: Database not found at {args.db_path}")
         print("Make sure the sensor simulator is running first.")
         sys.exit(1)
-    
+
     print(f"Reading from database: {args.db_path}")
-    
+
     try:
         if args.mode in ["simple", "all"]:
             simple_reader_example(args.db_path)
-        
+
         if args.mode in ["stats", "all"]:
             statistics_example(args.db_path)
-        
+
         if args.mode in ["continuous", "all"]:
             continuous_reader_example(args.db_path, args.duration)
-            
+
     except KeyboardInterrupt:
         print("\n\nStopped by user")
     except Exception as e:

@@ -616,11 +616,12 @@ class SensorSimulator:
                         logger.info(f"Corrupted database backed up to: {backup_path}")
 
                         # Remove corrupted database
-                        self.database.db_path.unlink(missing_ok=True)
+                        Path(self.database.db_path).unlink(missing_ok=True)
 
                         # Also remove journal files
+                        db_path = Path(self.database.db_path)
                         for suffix in ["-journal", "-wal", "-shm"]:
-                            journal_path = self.database.db_path.with_suffix(suffix)
+                            journal_path = Path(str(db_path).replace(".db", suffix))
                             journal_path.unlink(missing_ok=True)
 
                         # Create new database
@@ -660,8 +661,9 @@ class SensorSimulator:
             logger.warning(
                 f"Continuing after error {self.consecutive_errors}/{self.max_consecutive_errors}"
             )
-        else:
             return True
+
+        return True
 
     def _start_debug_reporter(self):
         """Start a background thread that reports detailed status every 5 seconds in debug mode."""

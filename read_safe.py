@@ -6,7 +6,6 @@ This script demonstrates best practices for concurrent reading.
 
 import sqlite3
 import time
-import sys
 from pathlib import Path
 
 

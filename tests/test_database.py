@@ -194,7 +194,7 @@ class TestSensorDatabase:
         db = SensorDatabase(self.db_path)
 
         # Verify database file exists
-        assert Path.exists(self.db_path)
+        assert Path(self.db_path).exists()
 
         # Verify table exists
         with db.conn_manager.get_cursor() as cursor:

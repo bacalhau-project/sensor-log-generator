@@ -31,8 +31,11 @@ class TestDatabaseCheckpointing:
         self.temp_dir.cleanup()
 
     def test_batch_timeout_triggers_checkpoint(self):
-        """Test that batch timeout properly triggers a checkpoint."""
+        """Test that batch timeout triggers a checkpoint."""
         db = SensorDatabase(self.db_path)
+
+        # Stop the background thread to make test deterministic
+        db.stop_background_commit_thread()
 
         # Use insert_reading which uses batch buffer
         db.insert_reading(
@@ -42,16 +45,16 @@ class TestDatabaseCheckpointing:
         # Verify data is in buffer but not yet persisted
         assert len(db.batch_buffer) == 1
 
-        # Wait for batch timeout
-        time.sleep(db.batch_timeout + 0.5)
+        # Manually set the last batch time to simulate timeout
+        db.last_batch_time = time.time() - (db.batch_timeout + 1)
 
         # Force another operation to trigger timeout check
         db.insert_reading(
             sensor_id="TEST002", temperature=26.0, vibration=0.1, voltage=12.0, status_code=0
         )
 
-        # Verify batch was committed
-        assert len(db.batch_buffer) < db.batch_size
+        # Verify batch was committed (should have only TEST002 now)
+        assert len(db.batch_buffer) == 1  # Only TEST002 should be in buffer
 
         # Close and reopen database to verify persistence
         db.close()

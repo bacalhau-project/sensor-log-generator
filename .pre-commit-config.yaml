@@ -54,18 +54,22 @@ repos:
         pass_filenames: false
         stages: [manual]
 
-  # Type checking (manual/push)
+  # Type checking (run on every commit)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:
       - id: mypy
         name: Type checking
-        args: [--ignore-missing-imports, --no-strict-optional, --allow-untyped-defs]
+        args: [--config-file=mypy.ini]
         additional_dependencies:
           - types-PyYAML
           - types-requests
+          - pydantic
+          - psutil
+          - numpy
+          - types-psutil
         files: ^(src/|main\.py)
-        stages: [manual, pre-push]
+        stages: [pre-commit]  # Run on every commit
 
   # Tests (push only)
   - repo: local

@@ -14,7 +14,6 @@ Sets up pre-commit hooks and installs dependencies.
 
 import subprocess
 import sys
-from pathlib import Path
 
 import click
 from rich.console import Console

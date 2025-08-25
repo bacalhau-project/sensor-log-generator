@@ -15,16 +15,13 @@ Replaces the bash build.sh script with Python implementation.
 """
 
 import os
-import sys
 import subprocess
-import json
-import re
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Tuple
+
 import click
 import semver
-import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -40,7 +37,7 @@ class BuildError(Exception):
 class DockerBuilder:
     def __init__(
         self,
-        image_name: Optional[str] = None,
+        image_name: str | None = None,
         platforms: str = "linux/amd64,linux/arm64",
         dockerfile: str = "Dockerfile",
         registry: str = "ghcr.io",
@@ -107,7 +104,7 @@ class DockerBuilder:
         return "GITHUB_USER_NOT_SET"
 
     def _run_command(
-        self, cmd: List[str], check: bool = True, verbose: bool = False
+        self, cmd: list[str], check: bool = True, verbose: bool = False
     ) -> subprocess.CompletedProcess:
         """Run a command and return the result"""
         if verbose:
@@ -218,7 +215,7 @@ class DockerBuilder:
                 self._run_command(["docker", "buildx", "use", self.builder_name], verbose=False)
                 return
             else:
-                console.print(f"[yellow]![/yellow] Removing non-functional builder")
+                console.print("[yellow]![/yellow] Removing non-functional builder")
                 self._run_command(
                     ["docker", "buildx", "rm", self.builder_name], check=False, verbose=False
                 )
@@ -241,7 +238,7 @@ class DockerBuilder:
         self._run_command(["docker", "buildx", "use", self.builder_name], verbose=False)
         console.print("[green]✓[/green] Builder created and ready")
 
-    def get_current_version(self) -> Optional[semver.Version]:
+    def get_current_version(self) -> semver.Version | None:
         """Get the current version from git tags"""
         try:
             result = self._run_command(["git", "tag", "--list", "v*"], check=False)
@@ -264,7 +261,7 @@ class DockerBuilder:
             pass
         return None
 
-    def bump_version(self, current: Optional[semver.Version], bump_type: str) -> semver.Version:
+    def bump_version(self, current: semver.Version | None, bump_type: str) -> semver.Version:
         """Bump the version based on type"""
         if current is None:
             # Start with 1.0.0 if no version exists
@@ -309,7 +306,7 @@ class DockerBuilder:
         if not self.skip_push:
             console.print(f"[blue]Pushing tag {tag} to remote...[/blue]")
             self._run_command(["git", "push", "origin", tag], verbose=False)
-            console.print(f"[green]✓[/green] Pushed tag to remote")
+            console.print("[green]✓[/green] Pushed tag to remote")
 
     def build_and_push(self, version: semver.Version, datetime_tag: str):
         """Build and push the Docker images"""
@@ -337,7 +334,7 @@ class DockerBuilder:
                 f"{base_tag}:dev-{dev_timestamp}",
                 f"{base_tag}:{version}-dev",
             ]
-            console.print(f"[yellow]📦 Local development build - using dev tags[/yellow]")
+            console.print("[yellow]📦 Local development build - using dev tags[/yellow]")
 
         # Add git commit hash if in git repo
         try:
@@ -387,11 +384,11 @@ class DockerBuilder:
 
         # Execute build
         console.print(f"[blue]Building for platforms: {self.platforms}[/blue]")
-        console.print(f"[blue]Tags:[/blue]")
+        console.print("[blue]Tags:[/blue]")
         for tag in tags:
             console.print(f"  • {tag}")
 
-        console.print(f"\n[yellow]Building images... (this may take a few minutes)[/yellow]")
+        console.print("\n[yellow]Building images... (this may take a few minutes)[/yellow]")
         result = subprocess.run(build_cmd, capture_output=False, text=True, check=False)
         if result.returncode != 0:
             raise BuildError(f"Build failed with exit code {result.returncode}")
@@ -418,7 +415,7 @@ class DockerBuilder:
         console.print(f"  → .latest-registry-image-latest: {full_image_latest}")
         console.print(f"  → .latest-semver: {version}")
 
-    def print_summary(self, version: semver.Version, datetime_tag: str, tags: List[str]):
+    def print_summary(self, version: semver.Version, datetime_tag: str, tags: list[str]):
         """Print build summary"""
         is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
 
@@ -499,11 +496,11 @@ class DockerBuilder:
     "--builder-name", envvar="BUILDER_NAME", default="multiarch-builder", help="Buildx builder name"
 )
 def main(
-    image_name: Optional[str],
+    image_name: str | None,
     platforms: str,
     dockerfile: str,
     registry: str,
-    version_tag: Optional[str],
+    version_tag: str | None,
     version_bump: str,
     skip_push: bool,
     no_cache: bool,

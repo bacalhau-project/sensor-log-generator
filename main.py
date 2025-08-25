@@ -292,7 +292,7 @@ def load_config(config_path: str) -> dict:
     """
     logger = get_safe_logger(__name__)
     try:
-        with Path.open(config_path) as f:
+        with Path(config_path).open() as f:
             raw_config_data = yaml.safe_load(f)
         if not isinstance(raw_config_data, dict):
             logger.error(f"Config file {config_path} content must be a dictionary.")
@@ -325,8 +325,8 @@ def load_config(config_path: str) -> dict:
     except Exception as e:
         logger.exception(f"Error loading configuration file {config_path}: {e!s}")
         raise_with_context(f"Error loading configuration file {config_path}: {e!s}", e)
-    else:
-        return config
+
+    return config
 
 
 def load_identity(identity_path: str) -> dict:
@@ -335,7 +335,7 @@ def load_identity(identity_path: str) -> dict:
 
     logger = get_safe_logger(__name__)
     try:
-        with Path.open(identity_path) as f:
+        with Path(identity_path).open() as f:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
             logger.error(f"Identity file {identity_path} content must be a dictionary.")
@@ -343,7 +343,6 @@ def load_identity(identity_path: str) -> dict:
                 "Identity file content must be a dictionary.",
                 TypeError("Identity file content must be a dictionary."),
             )
-
         # Validate and parse using Pydantic model
         identity_data_model = IdentityData(**raw_identity_data)
         return identity_data_model.model_dump()  # Convert Pydantic model to dict
@@ -360,6 +359,9 @@ def load_identity(identity_path: str) -> dict:
     except Exception as e:
         logger.exception(f"Error loading identity file {identity_path}: {e}")
         raise_with_context(f"Error loading identity file {identity_path}: {e}", e)
+
+    # This line should never be reached since all exceptions re-raise, but mypy needs it
+    raise RuntimeError("Unexpected error in load_identity")
 
 
 def generate_sensor_id(identity: dict) -> str:

@@ -208,8 +208,8 @@ class TestDatabaseCorruptionHandling:
         Path.open(wal_path, "a").close()
         Path.open(shm_path, "a").close()
 
-        assert Path.exists(wal_path)
-        assert Path.exists(shm_path)
+        assert Path(wal_path).exists()
+        assert Path(shm_path).exists()
 
         # Corrupt the main database
         with Path.open(self.db_path, "wb") as f:

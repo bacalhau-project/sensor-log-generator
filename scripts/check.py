@@ -14,8 +14,6 @@ This mimics what pre-commit hooks will do.
 
 import subprocess
 import sys
-from pathlib import Path
-from typing import List, Tuple
 
 import click
 from rich.console import Console
@@ -24,7 +22,7 @@ from rich.table import Table
 console = Console()
 
 
-def run_command(cmd: List[str], description: str) -> Tuple[bool, str]:
+def run_command(cmd: list[str], description: str) -> tuple[bool, str]:
     """Run a command and return success status and output."""
     console.print(f"\n[blue]🔍 {description}...[/blue]")
 

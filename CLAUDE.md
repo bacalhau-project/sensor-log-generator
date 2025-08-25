@@ -75,11 +75,16 @@ The system uses a nested identity format:
 ## Development Guidelines
 - **CRITICAL: Pre-commit hooks are configured for practical development**
   - Setup: `uv run scripts/setup.py --dev`
-  - On commit: Auto-fixes formatting, checks syntax, removes trailing whitespace
+  - On commit: Auto-fixes formatting, checks syntax, removes trailing whitespace, runs type checking
   - On push: Runs tests and security scans
   - Manual full check: `uv run scripts/check.py --fix`
 - Always use ruff for python lint checking
 - Always use uv, instead of python, when writing python scripts
+- **Type checking with mypy**:
+  - Runs automatically on every commit via pre-commit hooks
+  - Configuration in `mypy.ini` with gradual typing settings
+  - To run manually: `uv run mypy --config-file=mypy.ini src/ main.py`
+  - Currently in lenient mode to allow gradual adoption
 - Make sure each CLI line is correctly terminated or has a \ for continuation at 80 characters
 - Ensure database mode is logged at startup
 - Use read-only connections when reading from the database

@@ -122,23 +122,18 @@ class TestDatabaseReadOperations:
         base_time = time.time()
         for i in range(10):
             timestamp = base_time - (i * 60)  # 1 minute apart
-            self.db.store_reading(
-                timestamp=timestamp,
+            # Use insert_reading which accepts individual parameters
+            self.db.insert_reading(
                 sensor_id=f"TIME{i:03d}",
                 temperature=25.0,
-                humidity=50.0,
-                pressure=1013.0,
                 vibration=0.1,
                 voltage=12.0,
                 status_code=0,
                 anomaly_flag=False,
-                anomaly_type=None,
                 firmware_version="1.0",
                 model="TestModel",
                 manufacturer="TestMfg",
                 location="Test Location",
-                latitude=40.0,
-                longitude=-74.0,
                 timezone_str="+00:00",
             )
 
@@ -287,11 +282,9 @@ class TestDatabaseReadOperations:
                 model="TestModel",
                 manufacturer="TestMfg",
                 location=f"Location{i}",
-                latitude=40.0 + i * 0.1,
-                longitude=-74.0 + i * 0.1,
                 original_timezone="+00:00",
             )
-            self.db.store_reading(reading)
+            self.db.insert_reading(reading)
 
         readings = self.db.get_readings(limit=10)
         assert len(readings) == 5
@@ -499,12 +492,9 @@ class TestDatabaseEdgeCases:
         db = SensorDatabase(db_path)
 
         # Insert reading with minimal required fields
-        db.store_reading(
-            timestamp=time.time(),
+        db.insert_reading(
             sensor_id="NULL001",
             temperature=25.0,
-            humidity=None,  # Optional
-            pressure=None,  # Optional
             vibration=0.1,
             voltage=12.0,
             status_code=0,
@@ -514,8 +504,6 @@ class TestDatabaseEdgeCases:
             model="TestModel",
             manufacturer="TestMfg",
             location="Test Location",
-            latitude=None,  # Optional
-            longitude=None,  # Optional
             timezone_str="+00:00",
         )
 
@@ -535,12 +523,9 @@ class TestDatabaseEdgeCases:
         db = SensorDatabase(db_path)
 
         # Insert reading with Unicode characters
-        db.store_reading(
-            timestamp=time.time(),
+        db.insert_reading(
             sensor_id="UNICODE_001_🌡️",
             temperature=25.0,
-            humidity=50.0,
-            pressure=1013.0,
             vibration=0.1,
             voltage=12.0,
             status_code=0,
@@ -550,8 +535,6 @@ class TestDatabaseEdgeCases:
             model="Model_测试",
             manufacturer="Mfg_製造商",
             location="Location_מיקום",
-            latitude=40.0,
-            longitude=-74.0,
             timezone_str="+00:00",
         )
 
@@ -567,12 +550,9 @@ class TestDatabaseEdgeCases:
         db = SensorDatabase(db_path)
 
         # Test very old timestamp (1970)
-        db.store_reading(
-            timestamp=0.0,
+        db.insert_reading(
             sensor_id="OLD001",
             temperature=25.0,
-            humidity=50.0,
-            pressure=1013.0,
             vibration=0.1,
             voltage=12.0,
             status_code=0,
@@ -582,19 +562,14 @@ class TestDatabaseEdgeCases:
             model="TestModel",
             manufacturer="TestMfg",
             location="Test Location",
-            latitude=40.0,
-            longitude=-74.0,
             timezone_str="+00:00",
         )
 
         # Test future timestamp (2100)
         future_timestamp = datetime(2100, 1, 1, tzinfo=UTC).timestamp()
-        db.store_reading(
-            timestamp=future_timestamp,
+        db.insert_reading(
             sensor_id="FUTURE001",
             temperature=25.0,
-            humidity=50.0,
-            pressure=1013.0,
             vibration=0.1,
             voltage=12.0,
             status_code=0,
@@ -604,8 +579,6 @@ class TestDatabaseEdgeCases:
             model="TestModel",
             manufacturer="TestMfg",
             location="Test Location",
-            latitude=40.0,
-            longitude=-74.0,
             timezone_str="+00:00",
         )
 

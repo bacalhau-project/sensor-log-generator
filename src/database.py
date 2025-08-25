@@ -18,7 +18,6 @@ from typing import Any
 import psutil
 from pydantic import BaseModel
 
-from .error_utils import raise_with_context
 from .safe_logger import get_safe_logger
 
 
@@ -89,7 +88,7 @@ def retry_on_error(max_retries=3, retry_delay=1.0):
                         and not args[0]._check_circuit_breaker()
                     ):
                         msg = "Circuit breaker is open, database operations suspended"
-                        raise_with_context(sqlite3.OperationalError(msg))
+                        raise sqlite3.OperationalError(msg)
 
                     if debug_mode and attempt > 0:
                         logger.debug(
@@ -421,10 +420,52 @@ class SensorDatabase:
             self.logger.setLevel(logging.DEBUG)
             self.logger.debug(f"🔍 Database initialized in DEBUG mode at {self.db_path}")
 
+        # Initialize all attributes BEFORE starting background thread
+        self.batch_buffer: list[SensorReadingSchema] = []
+        self.batch_size = 50  # Larger batches reduce write frequency and read conflicts
+        self.batch_timeout = 10.0  # Commit every 10 seconds for consistent read windows
+        self.last_batch_time = time.time()
+        self.batch_insert_count = 0
+        self.insert_count = 0
+        self.total_insert_time = 0.0
+        self.total_batch_time = 0.0
+
+        # In-memory failure buffer for resilient writes during disk I/O errors
+        self.failure_buffer: list[SensorReadingSchema] = []
+        self.failure_buffer_max_size = 10000  # Keep up to 10k failed readings in memory
+        self.failure_buffer_retry_intervals = [1.0, 3.0, 5.0, 9.0, 12.0, 15.0]
+        self.failure_buffer_max_retry_interval = 15.0
+        self.last_failure_retry_time = time.time()
+        self.failure_retry_count = 0
+        self.failure_buffer_lock = threading.Lock()
+
+        # Circuit breaker pattern for database reliability
+        self.circuit_breaker_enabled = True
+        self.circuit_breaker_failure_threshold = 5
+        self.circuit_breaker_success_threshold = 2
+        self.circuit_breaker_timeout = 30.0
+        self.circuit_breaker_state = "closed"
+        self.circuit_breaker_failures = 0
+        self.circuit_breaker_successes = 0
+        self.circuit_breaker_last_failure_time = 0.0
+        self.circuit_breaker_lock = threading.Lock()
+
+        # Resource limits
+        self.max_batch_size = 1000
+        self.max_database_size_mb = 1000
+        self.max_memory_usage_mb = 100
+        self.resource_check_interval = 60
+        self.last_resource_check = 0.0
+
+        # Thread safety
+        self._lock = threading.Lock()
+        self._commit_lock = threading.Lock()
+        self._closing = False
+
         # Register signal handlers for graceful shutdown
         self._register_shutdown_handlers()
 
-        # Start background commit thread for external visibility
+        # Start background commit thread for external visibility (AFTER all attributes are initialized)
         self._start_background_commit_thread()
 
         if self.debug_mode:
@@ -472,42 +513,6 @@ class SensorDatabase:
 
         abs_db_path = Path(self.db_path).resolve()  # Use a consistent variable for absolute path
         logging.info(f"Database path: {abs_db_path}")
-        self.batch_buffer = []
-        self.batch_size = 50  # Larger batches reduce write frequency and read conflicts
-        self.batch_timeout = 10.0  # Commit every 10 seconds for consistent read windows
-        self.last_batch_time = time.time()
-        self.batch_insert_count = 0
-        self.insert_count = 0
-        self.total_insert_time = 0.0
-        self.total_batch_time = 0.0
-
-        # In-memory failure buffer for resilient writes during disk I/O errors
-        self.failure_buffer = []
-        self.failure_buffer_max_size = 10000  # Keep up to 10k failed readings in memory
-        # Custom retry intervals: 1s, 3s, 5s, 9s, 12s, 15s, then stay at 15s
-        self.failure_buffer_retry_intervals = [1.0, 3.0, 5.0, 9.0, 12.0, 15.0]
-        self.failure_buffer_max_retry_interval = 15.0  # Max 15 seconds between retries
-        self.last_failure_retry_time = time.time()
-        self.failure_retry_count = 0
-        self.failure_buffer_lock = threading.Lock()
-
-        # Circuit breaker pattern for database reliability
-        self.circuit_breaker_enabled = True
-        self.circuit_breaker_failure_threshold = 5  # Open circuit after 5 consecutive failures
-        self.circuit_breaker_success_threshold = 2  # Close circuit after 2 consecutive successes
-        self.circuit_breaker_timeout = 30.0  # Try to recover after 30 seconds
-        self.circuit_breaker_state = "closed"  # closed, open, half_open
-        self.circuit_breaker_failures = 0
-        self.circuit_breaker_successes = 0
-        self.circuit_breaker_last_failure_time = 0
-        self.circuit_breaker_lock = threading.Lock()
-
-        # Resource limits
-        self.max_batch_size = 1000  # Maximum batch size to prevent memory issues
-        self.max_database_size_mb = 1000  # Maximum database size in MB (configurable)
-        self.max_memory_usage_mb = 100  # Maximum memory usage for buffers
-        self.resource_check_interval = 60  # Check resources every 60 seconds
-        self.last_resource_check = 0
 
         # Create database directory if it doesn't exist
         if self.db_path != ":memory:":
@@ -708,12 +713,13 @@ class SensorDatabase:
                     self.logger.debug(f"Database contains {count} readings")
                 except sqlite3.Error as e:
                     self.logger.debug(f"Failed to query sensor_readings: {e}")
-                    return False
-                finally:
                     cursor.close()
                     test_conn.close()
+                    return False
 
-                return True
+            cursor.close()
+            test_conn.close()
+            return True
 
         except sqlite3.DatabaseError as e:
             error_msg = str(e).lower()
@@ -868,7 +874,7 @@ class SensorDatabase:
         def periodic_commit():
             """Background thread to ensure data visibility for external readers."""
             while self._commit_thread_running:
-                time.sleep(10.0)  # Check every 10 seconds to reduce conflicts
+                time.sleep(0.5)  # Check every 0.5 seconds for faster test cleanup
                 try:
                     with self._commit_lock:
                         # Check if there's uncommitted data
@@ -907,7 +913,7 @@ class SensorDatabase:
                 test_result = self.conn_manager.execute_query("SELECT 1")
                 if test_result is None or test_result[0][0] != 1:
                     msg = "Database connection test failed"
-                    raise_with_context(sqlite3.DatabaseError(msg))
+                    raise sqlite3.DatabaseError(msg)
             except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
                 error_msg = str(e).lower()
                 if "malformed" in error_msg or "corrupt" in error_msg:
@@ -1178,7 +1184,7 @@ class SensorDatabase:
                 WHERE id IN ({placeholders})
             """
 
-            self.conn_manager.execute_write(query, reading_ids)
+            self.conn_manager.execute_write(query, tuple(reading_ids))
 
         except Exception as e:
             self.logger.exception(f"Error marking readings as synced: {e}")
@@ -1286,25 +1292,37 @@ class SensorDatabase:
 
         # Use lock for thread-safe batch operations
         with self._commit_lock:
-            # Add to batch buffer
-            self.batch_buffer.append(
-                (
-                    timestamp,
-                    sensor_id,
-                    temperature,
-                    vibration,
-                    voltage,
-                    status_code,
-                    anomaly_flag,
-                    anomaly_type,
-                    firmware_version,
-                    model,
-                    manufacturer,
-                    location,
-                    timezone_str,  # Add original timezone
-                    0,  # Not synced by default
-                )
+            # Create a SensorReadingSchema object
+            reading = SensorReadingSchema(
+                timestamp=timestamp,
+                sensor_id=sensor_id,
+                temperature=temperature,
+                humidity=None,  # Not provided in old method
+                pressure=None,  # Not provided in old method
+                vibration=vibration,
+                voltage=voltage,
+                status_code=status_code,
+                anomaly_flag=anomaly_flag,
+                anomaly_type=anomaly_type,
+                firmware_version=firmware_version,
+                model=model,
+                manufacturer=manufacturer,
+                location=location,  # Use location field
+                latitude=None,
+                longitude=None,
+                original_timezone=timezone_str,
+                synced=False,
+                serial_number=None,
+                manufacture_date=None,
+                deployment_type=None,
+                installation_date=None,
+                height_meters=None,
+                orientation_degrees=None,
+                instance_id=None,
+                sensor_type=None,
             )
+            # Add to batch buffer
+            self.batch_buffer.append(reading)
 
             # Check if we should commit the batch
             current_time = time.time()
@@ -1345,7 +1363,28 @@ class SensorDatabase:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
 
-                self.conn_manager.execute_many(query, self.batch_buffer)
+                # Convert SensorReadingSchema objects to tuples for execute_many
+                batch_tuples = [
+                    (
+                        reading.timestamp,
+                        reading.sensor_id,
+                        reading.temperature,
+                        reading.vibration,
+                        reading.voltage,
+                        reading.status_code,
+                        reading.anomaly_flag,
+                        reading.anomaly_type,
+                        reading.firmware_version,
+                        reading.model,
+                        reading.manufacturer,
+                        reading.location,  # Use location field
+                        reading.original_timezone,
+                        1 if reading.synced else 0,
+                    )
+                    for reading in self.batch_buffer
+                ]
+
+                self.conn_manager.execute_many(query, batch_tuples)
 
                 # Explicitly checkpoint/commit for external readers
                 self.conn_manager.checkpoint("PASSIVE")  # Works for both WAL and DELETE modes
@@ -1430,9 +1469,16 @@ class SensorDatabase:
                 if hasattr(self, "_closing") and self._closing:
                     return
 
+                # Mark as closing to prevent re-entry
+                self._closing = True
+
                 # During shutdown, logging might fail, so wrap in try-except
                 with contextlib.suppress(Exception):
                     self.logger.info("Closing database connection...")
+
+            # Stop background commit thread FIRST
+            if hasattr(self, "stop_background_commit_thread"):
+                self.stop_background_commit_thread()
 
             # Commit any pending batch
             if hasattr(self, "batch_buffer") and self.batch_buffer:
@@ -1462,7 +1508,7 @@ class SensorDatabase:
                         import json
 
                         recovery_file = self.db_path.replace(".db", "_recovery.json")
-                        with Path.open(recovery_file, "w") as f:
+                        with Path(recovery_file).open("w") as f:
                             readings_data = [r.model_dump() for r in self.failure_buffer]
                             json.dump(readings_data, f, indent=2, default=str)
                         with contextlib.suppress(Exception):
@@ -1512,7 +1558,7 @@ class SensorDatabase:
             pass  # Silently ignore all errors during close
 
     @retry_on_error()
-    def get_database_stats(self) -> dict:
+    def get_database_stats(self) -> dict[str, Any]:
         """Get comprehensive database statistics.
 
         Returns:
@@ -1526,7 +1572,7 @@ class SensorDatabase:
             - File paths and sizes
         """
         try:
-            stats = {
+            stats: dict[str, Any] = {
                 "total_readings": 0,
                 "database_size_bytes": 0,
                 "last_write_timestamp": None,
@@ -1896,7 +1942,7 @@ class SensorDatabase:
 
             # Disk space information
             try:
-                disk_usage = psutil.disk_usage(db_dir)
+                disk_usage = psutil.disk_usage(str(db_dir))
                 self.logger.debug(f"Disk total: {disk_usage.total / (1024**3):.2f} GB")
                 self.logger.debug(f"Disk used: {disk_usage.used / (1024**3):.2f} GB")
                 self.logger.debug(f"Disk free: {disk_usage.free / (1024**3):.2f} GB")
@@ -1924,7 +1970,7 @@ class SensorDatabase:
 
         # Check cgroup for docker/kubernetes
         try:
-            with Path.open("/proc/self/cgroup") as f:
+            with Path("/proc/self/cgroup").open() as f:
                 cgroup_content = f.read()
                 if "docker" in cgroup_content or "kubepods" in cgroup_content:
                     self.logger.debug("Detected container via /proc/self/cgroup")

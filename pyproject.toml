@@ -144,3 +144,13 @@ exclude_dirs = ["tests", "test_*.py", ".venv", "venv"]
 severity = "medium"
 confidence = "medium"
 skips = ["B101", "B601"]  # Skip assert_used and shell_with_params tests
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "types-psutil>=7.0.0.20250822",
+    "types-pyyaml>=6.0.12.20250809",
+    "types-requests>=2.32.4.20250809",
+]
