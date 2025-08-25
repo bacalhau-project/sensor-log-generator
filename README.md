@@ -100,7 +100,7 @@ sensor:
 When starting the simulator, you'll see the database mode in the startup logs:
 ```
 INFO - Using sensor ID: TEST001
-INFO - Sensor Location: New York  
+INFO - Sensor Location: New York
 INFO - Database mode: WAL (change with SENSOR_WAL env var)
 ```
 
@@ -405,7 +405,7 @@ uv run main.py
 docker run -e SENSOR_WAL=false -v $(pwd)/data:/app/data sensor-simulator
 ```
 
-**Platform Notes**: 
+**Platform Notes**:
 - **Linux**: WAL mode (default) works great
 - **Mac/Windows (Docker Desktop)**: Set `SENSOR_WAL=false` for DELETE mode
 
@@ -439,35 +439,35 @@ CREATE TABLE sensor_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME,
     sensor_id TEXT,
-    
+
     -- Sensor readings
     temperature REAL,
     humidity REAL,
     pressure REAL,
     voltage REAL,
-    
+
     -- Anomaly tracking
     status_code INTEGER,
     anomaly_flag BOOLEAN,
     anomaly_type TEXT,
-    
+
     -- Device metadata
     firmware_version TEXT,
     model TEXT,
     manufacturer TEXT,
     serial_number TEXT,
-    
+
     -- Location data
     location TEXT,
     latitude REAL,
     longitude REAL,
     timezone TEXT,
-    
+
     -- Deployment info
     deployment_type TEXT,
     installation_date TEXT,
     height_meters REAL,
-    
+
     -- Sync status
     synced BOOLEAN DEFAULT 0
 );
@@ -580,7 +580,7 @@ function getReadOnlyConnection(dbPath = 'data/sensor_data.db') {
 // Monitor function
 function monitorDatabase() {
     const db = getReadOnlyConnection();
-    
+
     setInterval(() => {
         db.get("SELECT COUNT(*) as count FROM sensor_readings", (err, row) => {
             if (err) {
@@ -597,14 +597,14 @@ const Database = require('better-sqlite3');
 
 function safeQuery() {
     try {
-        const db = new Database('data/sensor_data.db', { 
+        const db = new Database('data/sensor_data.db', {
             readonly: true,
-            fileMustExist: true 
+            fileMustExist: true
         });
-        
+
         const count = db.prepare('SELECT COUNT(*) as count FROM sensor_readings').get();
         console.log(`Readings: ${count.count}`);
-        
+
         db.close();
     } catch (error) {
         console.error('Query failed:', error);
@@ -637,7 +637,7 @@ Query the SQLite database for insights:
 
 ```sql
 -- Anomaly rate by manufacturer
-SELECT 
+SELECT
   manufacturer,
   COUNT(*) as total,
   SUM(anomaly_flag) as anomalies,
@@ -646,7 +646,7 @@ FROM sensor_data
 GROUP BY manufacturer;
 
 -- Temperature patterns by hour
-SELECT 
+SELECT
   strftime('%H', timestamp) as hour,
   AVG(temperature) as avg_temp,
   MIN(temperature) as min_temp,
@@ -657,7 +657,7 @@ GROUP BY hour
 ORDER BY hour;
 
 -- Anomaly types distribution
-SELECT 
+SELECT
   anomaly_type,
   COUNT(*) as count,
   ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 2) as percentage
@@ -753,7 +753,7 @@ anomalies:
 
 # Use dynamic reload to increase over time:
 # Hour 1: probability: 0.05
-# Hour 2: probability: 0.10  
+# Hour 2: probability: 0.10
 # Hour 3: probability: 0.25
 ```
 
