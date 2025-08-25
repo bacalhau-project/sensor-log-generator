@@ -1,5 +1,6 @@
-import logging
 import os
+
+from .safe_logger import get_safe_logger
 
 # Removed: from threading import Event, Thread # No longer needed for file watching
 
@@ -22,10 +23,11 @@ class ConfigManager:
         # Removed: loaded_identity_from_file = False
 
         self.config = config
-        logging.info("Configuration dictionary provided.")
+        logger = get_safe_logger(__name__)
+        logger.info("Configuration dictionary provided.")
 
         self.identity = identity
-        logging.info("Node identity dictionary provided.")
+        logger.info("Node identity dictionary provided.")
 
         # Apply environment variable overrides (highest priority)
         self._apply_env_overrides()
@@ -44,17 +46,18 @@ class ConfigManager:
         if self.identity is None:  # Should be initialized to {} if None was passed
             self.identity = {}
 
+        logger = get_safe_logger(__name__)
         # Override sensor location if environment variable is set
         if "SENSOR_LOCATION" in os.environ:
             self.identity["location"] = os.environ["SENSOR_LOCATION"]
-            logging.info(
+            logger.info(
                 f"Overriding sensor location from environment variable: {self.identity['location']}"
             )
 
         # Override sensor ID if environment variable is set
         if "SENSOR_ID" in os.environ:
             self.identity["id"] = os.environ["SENSOR_ID"]
-            logging.info(f"Overriding sensor ID from environment variable: {self.identity['id']}")
+            logger.info(f"Overriding sensor ID from environment variable: {self.identity['id']}")
 
     # Removed: load_config(self) method
     # Removed: load_node_identity(self) method

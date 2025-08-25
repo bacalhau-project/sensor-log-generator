@@ -1,4 +1,5 @@
 import atexit
+import contextlib
 import logging
 import os
 import platform
@@ -18,6 +19,7 @@ import psutil
 from pydantic import BaseModel
 
 from .error_utils import raise_with_context
+from .safe_logger import get_safe_logger
 
 
 # Define a Pydantic model for the sensor reading schema
@@ -74,55 +76,56 @@ def retry_on_error(max_retries=3, retry_delay=1.0):
         @wraps(func)
         def wrapper(*args, **kwargs):
             # Check if we're in debug mode
-            debug_mode = logging.getLogger("SensorDatabase").isEnabledFor(logging.DEBUG)
+            logger = get_safe_logger("SensorDatabase")
+            debug_mode = logger.isEnabledFor(logging.DEBUG)
 
             last_exception = None
             for attempt in range(max_retries + 1):
                 try:
                     # Check circuit breaker if this is a SensorDatabase method
                     if (
-                        hasattr(args[0], "_check_circuit_breaker")
+                        args
+                        and hasattr(args[0], "_check_circuit_breaker")
                         and not args[0]._check_circuit_breaker()
                     ):
                         msg = "Circuit breaker is open, database operations suspended"
                         raise_with_context(sqlite3.OperationalError(msg))
 
                     if debug_mode and attempt > 0:
-                        logging.getLogger("SensorDatabase").debug(
+                        logger.debug(
                             f"Retry attempt {attempt + 1}/{max_retries + 1} for {func.__name__}"
                         )
 
-                        result = func(*args, **kwargs)
+                    result = func(*args, **kwargs)
 
-                        # Record success for circuit breaker
-                        if hasattr(args[0], "_record_circuit_success"):
-                            args[0]._record_circuit_success()
-                    else:
-                        return result
+                    # Record success for circuit breaker
+                    if args and hasattr(args[0], "_record_circuit_success"):
+                        args[0]._record_circuit_success()
+
                 except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                     last_exception = e
 
                     # Record failure for circuit breaker
-                    if hasattr(args[0], "_record_circuit_failure"):
+                    if args and hasattr(args[0], "_record_circuit_failure"):
                         args[0]._record_circuit_failure()
 
                     if attempt < max_retries:
                         # Log the error and retry
-                        logging.warning(
+                        logger.warning(
                             f"Database operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
                             f"Retrying in {retry_delay} seconds..."
                         )
                         if debug_mode:
-                            logging.getLogger("SensorDatabase").debug(
-                                f"Error type: {type(e).__name__}, Error details: {e!s}"
-                            )
+                            logger.debug(f"Error type: {type(e).__name__}, Error details: {e!s}")
                         time.sleep(retry_delay)
                     else:
                         # Log the final failure
-                        logging.exception(
+                        logger.exception(
                             f"Database operation failed after {max_retries + 1} attempts: {e}"
                         )
                         raise
+                else:
+                    return result
 
             # Ensure we raise the last exception if we exit the loop
             if last_exception:
@@ -146,7 +149,7 @@ class DatabaseConnectionManager:
         """
         self.db_path = db_path
         self.debug_mode = debug_mode
-        self.logger = logging.getLogger("DatabaseConnectionManager")
+        self.logger = get_safe_logger("DatabaseConnectionManager")
         self._local = threading.local()
         self._shutdown_handlers_registered = False
         self._checkpoint_lock = threading.Lock()
@@ -403,11 +406,12 @@ class SensorDatabase:
                                   deleted and recreated.
         """
         self.db_path = db_path
-        self.logger = logging.getLogger(
+        self.logger = get_safe_logger(
             "SensorDatabase"
         )  # Get logger early for potential deletion message
         # Inherit parent logger's level
-        self.logger.setLevel(logging.getLogger().level)
+        root_logger = get_safe_logger("")
+        self.logger.setLevel(root_logger.level)
 
         # Enable debug mode detection
         self.debug_mode = os.environ.get("DEBUG_MODE") == "true" or self.logger.isEnabledFor(
@@ -427,7 +431,7 @@ class SensorDatabase:
             self._log_debug_environment_info()
 
         # Handle deletion of existing database if not preserving
-        if self.db_path != ":memory:" and Path.exists(self.db_path):
+        if self.db_path != ":memory:" and Path(self.db_path).exists():
             if not preserve_existing_db:
                 # Don't check integrity if we're deleting anyway - just delete it
                 self.logger.info(
@@ -466,7 +470,7 @@ class SensorDatabase:
                         f"Existing database at '{self.db_path}' passed integrity check."
                     )
 
-        abs_db_path = Path.abspath(self.db_path)  # Use a consistent variable for absolute path
+        abs_db_path = Path(self.db_path).resolve()  # Use a consistent variable for absolute path
         logging.info(f"Database path: {abs_db_path}")
         self.batch_buffer = []
         self.batch_size = 50  # Larger batches reduce write frequency and read conflicts
@@ -507,10 +511,10 @@ class SensorDatabase:
 
         # Create database directory if it doesn't exist
         if self.db_path != ":memory:":
-            db_dir = Path.dirname(abs_db_path)
-            if not Path.exists(db_dir) and db_dir:  # Ensure db_dir is not empty string
+            db_dir = abs_db_path.parent
+            if db_dir and not db_dir.exists():
                 self.logger.info(f"Creating database directory: {db_dir}")
-                Path.makedirs(db_dir, exist_ok=True)
+                db_dir.mkdir(parents=True, exist_ok=True)
             elif not db_dir:
                 self.logger.debug(
                     f"Database path '{self.db_path}' is in the current directory. No directory creation needed beyond what OS provides."
@@ -535,8 +539,8 @@ class SensorDatabase:
 
         try:
             # Check database size
-            if self.db_path != ":memory:" and Path.exists(self.db_path):
-                db_size_mb = Path.getsize(self.db_path) / (1024 * 1024)
+            if self.db_path != ":memory:" and Path(self.db_path).exists():
+                db_size_mb = Path(self.db_path).stat().st_size / (1024 * 1024)
                 if db_size_mb > self.max_database_size_mb:
                     self.logger.error(
                         f"Database size ({db_size_mb:.2f}MB) exceeds limit ({self.max_database_size_mb}MB)"
@@ -637,31 +641,24 @@ class SensorDatabase:
             try:
                 # Check if logger exists and is not closed
                 if hasattr(self, "logger"):
-                    try:
+                    with contextlib.suppress(Exception):
+                        # Logger might be closed
                         self.logger.info("Shutdown detected, executing final data checkpoint...")
-                    except Exception:
-                        pass  # Logger might be closed
 
                 # Stop background thread if it exists
                 if hasattr(self, "stop_background_commit_thread"):
-                    try:
+                    with contextlib.suppress(Exception):
                         self.stop_background_commit_thread()
-                    except Exception:
-                        pass
 
                 # Checkpoint if conn_manager exists
                 if hasattr(self, "conn_manager") and self.conn_manager:
-                    try:
+                    with contextlib.suppress(Exception):
                         self.conn_manager.checkpoint("TRUNCATE")
-                    except Exception:
-                        pass
 
                 # Close if method exists
                 if hasattr(self, "close"):
-                    try:
+                    with contextlib.suppress(Exception):
                         self.close()
-                    except Exception:
-                        pass
             except Exception:
                 pass  # Ignore all errors during shutdown
 
@@ -681,7 +678,7 @@ class SensorDatabase:
         Returns:
             True if database is valid, False if corrupted or inaccessible
         """
-        if not Path.exists(db_path):
+        if not Path(db_path).exists():
             return True  # No file means no corruption
 
         try:
@@ -767,8 +764,8 @@ class SensorDatabase:
 
             # Create a new temporary database
             temp_db = f"{db_path}.recovery"
-            if Path.exists(temp_db):
-                Path.remove(temp_db)
+            if Path(temp_db).exists():
+                Path(temp_db).unlink()
 
             # Initialize new database with recovered data
             if recovered_data:
@@ -839,26 +836,26 @@ class SensorDatabase:
         """
         files_to_remove = []
 
-        if not skip_main and Path.exists(db_path):
-            files_to_remove.append(db_path)
+        if not skip_main and Path(db_path).exists():
+            files_to_remove.append(Path(db_path))
 
         # Journal file (for DELETE mode)
-        journal_file = f"{db_path}-journal"
-        if Path.exists(journal_file):
+        journal_file = Path(f"{db_path}-journal")
+        if journal_file.exists():
             files_to_remove.append(journal_file)
 
         # WAL mode files (even though we use DELETE mode, they might exist from previous runs)
-        wal_file = f"{db_path}-wal"
-        if Path.exists(wal_file):
+        wal_file = Path(f"{db_path}-wal")
+        if wal_file.exists():
             files_to_remove.append(wal_file)
 
-        shm_file = f"{db_path}-shm"
-        if Path.exists(shm_file):
+        shm_file = Path(f"{db_path}-shm")
+        if shm_file.exists():
             files_to_remove.append(shm_file)
 
         for file_path in files_to_remove:
             try:
-                Path.unlink(file_path)
+                file_path.unlink()
                 self.logger.debug(f"Removed: {file_path}")
             except OSError as e:
                 self.logger.warning(f"Could not remove {file_path}: {e}")
@@ -904,7 +901,7 @@ class SensorDatabase:
     def _init_db(self):
         """Initialize the database schema based on SensorReadingSchema."""
         # One more integrity check after connection manager is created
-        if self.db_path != ":memory:" and Path.exists(self.db_path):
+        if self.db_path != ":memory:" and Path(self.db_path).exists():
             try:
                 # Quick test query to ensure database is accessible
                 test_result = self.conn_manager.execute_query("SELECT 1")
@@ -1424,34 +1421,42 @@ class SensorDatabase:
             raise
 
     def close(self):
-        """Close the database connection for the current thread with final checkpoint."""
-        try:
-            # Check if logger exists
-            if not hasattr(self, "logger"):
-                return
+        """Close the database connection and clean up resources."""
+        if hasattr(self, "_closing") and self._closing:
+            return
 
-            self.logger.info("Closing database connection...")
+        try:
+            with self._lock:
+                if hasattr(self, "_closing") and self._closing:
+                    return
+
+                # During shutdown, logging might fail, so wrap in try-except
+                with contextlib.suppress(Exception):
+                    self.logger.info("Closing database connection...")
 
             # Commit any pending batch
             if hasattr(self, "batch_buffer") and self.batch_buffer:
-                self.logger.info(f"Committing {len(self.batch_buffer)} pending writes...")
+                with contextlib.suppress(Exception):
+                    self.logger.info(f"Committing {len(self.batch_buffer)} pending writes...")
                 if hasattr(self, "commit_batch"):
                     self.commit_batch()
 
             # Try to flush failure buffer one last time
             if hasattr(self, "failure_buffer") and self.failure_buffer:
-                self.logger.info(
-                    f"Attempting final flush of {len(self.failure_buffer)} failed writes..."
-                )
+                with contextlib.suppress(Exception):
+                    self.logger.info(
+                        f"Attempting final flush of {len(self.failure_buffer)} failed writes..."
+                    )
                 # Force immediate retry without waiting for interval
                 self.last_failure_retry_time = 0
                 self.failure_retry_count = 0  # Reset backoff for final attempt
                 self._retry_failed_writes()
 
                 if self.failure_buffer:
-                    self.logger.warning(
-                        f"WARNING: {len(self.failure_buffer)} readings could not be written to disk and will be lost!"
-                    )
+                    with contextlib.suppress(Exception):
+                        self.logger.warning(
+                            f"WARNING: {len(self.failure_buffer)} readings could not be written to disk and will be lost!"
+                        )
                     # Optionally save to a recovery file
                     try:
                         import json
@@ -1460,18 +1465,22 @@ class SensorDatabase:
                         with Path.open(recovery_file, "w") as f:
                             readings_data = [r.model_dump() for r in self.failure_buffer]
                             json.dump(readings_data, f, indent=2, default=str)
-                        self.logger.info(
-                            f"Saved {len(self.failure_buffer)} unwritten readings to {recovery_file}"
-                        )
+                        with contextlib.suppress(Exception):
+                            self.logger.info(
+                                f"Saved {len(self.failure_buffer)} unwritten readings to {recovery_file}"
+                            )
                     except Exception as e:
-                        self.logger.exception(f"Failed to save recovery file: {e}")
+                        with contextlib.suppress(Exception):
+                            self.logger.exception(f"Failed to save recovery file: {e}")
 
             # Force final checkpoint/commit for maximum durability
             if hasattr(self, "conn_manager") and self.conn_manager:
-                self.logger.info("Executing final data checkpoint...")
+                with contextlib.suppress(Exception):
+                    self.logger.info("Executing final data checkpoint...")
                 try:
                     self.conn_manager.checkpoint("TRUNCATE")  # TRUNCATE for WAL, commit for DELETE
-                    self.logger.info("Final checkpoint complete")
+                    with contextlib.suppress(Exception):
+                        self.logger.info("Final checkpoint complete")
                 except Exception:
                     pass  # Ignore checkpoint errors
 
@@ -1482,17 +1491,22 @@ class SensorDatabase:
                         # Set synchronous to FULL for final operations
                         conn.execute("PRAGMA synchronous=FULL;")
                         count = conn.execute("SELECT COUNT(*) FROM sensor_readings").fetchone()[0]
-                        self.logger.info(f"Database contains {count} total readings at shutdown")
+                        with contextlib.suppress(Exception):
+                            self.logger.info(
+                                f"Database contains {count} total readings at shutdown"
+                            )
                 except Exception as e:
-                    self.logger.warning(f"Could not get final count: {e}")
+                    with contextlib.suppress(Exception):
+                        self.logger.warning(f"Could not get final count: {e}")
 
-            # Close the connection manager's thread connection
-            if hasattr(self, "conn_manager") and self.conn_manager:
-                try:
-                    self.conn_manager.close_thread_connection()
-                    self.logger.info("Database connection closed successfully")
-                except Exception:
-                    pass  # Ignore close errors
+                # Close the connection manager's thread connection
+                if hasattr(self, "conn_manager") and self.conn_manager:
+                    try:
+                        self.conn_manager.close_thread_connection()
+                        with contextlib.suppress(Exception):
+                            self.logger.info("Database connection closed successfully")
+                    except Exception:
+                        pass  # Ignore close errors
 
         except Exception:
             pass  # Silently ignore all errors during close
@@ -1539,15 +1553,15 @@ class SensorDatabase:
             if self.db_path != ":memory:":
                 try:
                     # Database file
-                    if Path.exists(self.db_path):
-                        stats["files"]["database"]["size_bytes"] = Path.getsize(self.db_path)
+                    if Path(self.db_path).exists():
+                        stats["files"]["database"]["size_bytes"] = Path(self.db_path).stat().st_size
                         stats["files"]["database"]["exists"] = True
                         stats["database_size_bytes"] = stats["files"]["database"]["size_bytes"]
 
                     # Log file
                     log_path = self.db_path.replace(".db", ".log")
-                    if Path.exists(log_path):
-                        stats["files"]["log"]["size_bytes"] = Path.getsize(log_path)
+                    if Path(log_path).exists():
+                        stats["files"]["log"]["size_bytes"] = Path(log_path).stat().st_size
                         stats["files"]["log"]["exists"] = True
                 except OSError as e:
                     self.logger.exception(f"Error getting file sizes: {e}")
@@ -1858,17 +1872,17 @@ class SensorDatabase:
             )
 
         # Database path information
-        abs_db_path = Path.abspath(self.db_path)
+        abs_db_path = Path(self.db_path).resolve()
         self.logger.debug(f"Database absolute path: {abs_db_path}")
 
         # Directory information
-        db_dir = Path.dirname(abs_db_path) or "."
-        if Path.exists(db_dir):
+        db_dir = abs_db_path.parent
+        if db_dir.exists():
             self.logger.debug(f"Database directory: {db_dir}")
 
             # Check directory permissions
             try:
-                dir_stat = Path.stat(db_dir)
+                dir_stat = db_dir.stat()
                 dir_perms = oct(dir_stat.st_mode)[-3:]
                 self.logger.debug(f"Directory permissions: {dir_perms}")
                 self.logger.debug(f"Directory owner UID: {dir_stat.st_uid}")
@@ -1904,7 +1918,7 @@ class SensorDatabase:
     def _detect_container_environment(self) -> bool:
         """Detect if running in a container environment."""
         # Check for Docker
-        if Path.exists("/.dockerenv"):
+        if Path("/.dockerenv").exists():
             self.logger.debug("Detected Docker environment (/.dockerenv exists)")
             return True
 
@@ -1934,31 +1948,31 @@ class SensorDatabase:
 
         try:
             # Check if database file exists
-            if Path.exists(self.db_path):
-                file_stat = Path.stat(self.db_path)
+            if Path(self.db_path).exists():
+                file_stat = Path(self.db_path).stat()
                 self.logger.debug(f"Database file size: {file_stat.st_size} bytes")
                 file_perms = oct(file_stat.st_mode)[-3:]
                 self.logger.debug(f"Database file permissions: {file_perms}")
 
                 # Check for journal files (WAL or DELETE mode)
-                wal_path = f"{self.db_path}-wal"
-                shm_path = f"{self.db_path}-shm"
-                journal_path = f"{self.db_path}-journal"
+                wal_path = Path(f"{self.db_path}-wal")
+                shm_path = Path(f"{self.db_path}-shm")
+                journal_path = Path(f"{self.db_path}-journal")
 
-                if Path.exists(wal_path):
-                    wal_size = Path.getsize(wal_path)
+                if wal_path.exists():
+                    wal_size = wal_path.stat().st_size
                     self.logger.debug(f"WAL file exists, size: {wal_size} bytes")
                 else:
                     self.logger.debug("WAL file does not exist")
 
-                if Path.exists(shm_path):
-                    shm_size = Path.getsize(shm_path)
+                if shm_path.exists():
+                    shm_size = shm_path.stat().st_size
                     self.logger.debug(f"SHM file exists, size: {shm_size} bytes")
                 else:
                     self.logger.debug("SHM file does not exist")
 
-                if Path.exists(journal_path):
-                    journal_size = Path.getsize(journal_path)
+                if journal_path.exists():
+                    journal_size = journal_path.stat().st_size
                     self.logger.debug(f"Journal file exists, size: {journal_size} bytes")
                 else:
                     self.logger.debug("Journal file does not exist")
@@ -1973,18 +1987,17 @@ class SensorDatabase:
 
             # Re-check disk space
             try:
-                db_dir = Path.dirname(self.db_path) or "."
-                disk_usage = psutil.disk_usage(db_dir)
+                db_dir = Path(self.db_path).parent if self.db_path != ":memory:" else Path()
+                disk_usage = psutil.disk_usage(str(db_dir))
                 self.logger.debug(
                     f"Current disk free: {disk_usage.free / (1024**3):.2f} GB ({100 - disk_usage.percent:.1f}%)"
                 )
 
                 # Check if we can write a test file
-                test_file = Path.joinpath(db_dir, f".test_write_{os.getpid()}")
+                test_file = db_dir / f".test_write_{os.getpid()}"
                 try:
-                    with Path.open(test_file, "w") as f:
-                        f.write("test")
-                    Path.unlink(test_file)
+                    test_file.write_text("test")
+                    test_file.unlink()
                     self.logger.debug("Test file write successful")
                 except Exception as e:
                     self.logger.debug(f"Test file write failed: {e}")
@@ -1994,25 +2007,24 @@ class SensorDatabase:
 
             # Check SQLite temporary directory
             try:
-                temp_dir = os.environ.get("SQLITE_TMPDIR", "/tmp")
+                temp_dir = Path(os.environ.get("SQLITE_TMPDIR", "/tmp"))
                 self.logger.debug(f"SQLite temp directory: {temp_dir}")
-                if Path.exists(temp_dir):
-                    temp_usage = psutil.disk_usage(temp_dir)
+                if temp_dir.exists():
+                    temp_usage = psutil.disk_usage(str(temp_dir))
                     self.logger.debug(
                         f"Temp dir ({temp_dir}) free: {temp_usage.free / (1024**3):.2f} GB"
                     )
 
                     # Check if temp dir is writable
-                    temp_writable = os.access(temp_dir, os.W_OK)
+                    temp_writable = os.access(str(temp_dir), os.W_OK)
                     self.logger.debug(f"Temp dir writable: {temp_writable}")
 
                     # Try to create a test file in temp dir
                     if temp_writable:
-                        test_temp_file = Path.join(temp_dir, f".sqlite_test_{os.getpid()}")
+                        test_temp_file = temp_dir / f".sqlite_test_{os.getpid()}"
                         try:
-                            with Path.open(test_temp_file, "w") as f:
-                                f.write("test")
-                            Path.unlink(test_temp_file)
+                            test_temp_file.write_text("test")
+                            test_temp_file.unlink()
                             self.logger.debug("SQLite temp dir write test successful")
                         except Exception as e:
                             self.logger.debug(f"SQLite temp dir write test failed: {e}")

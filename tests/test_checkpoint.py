@@ -6,7 +6,6 @@
 #     "pytest-timeout",
 # ]
 # ///
-
 import signal
 import sqlite3
 import tempfile
@@ -25,7 +24,7 @@ class TestDatabaseCheckpointing:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path.join(self.temp_dir.name, "test_checkpoint.db")
+        self.db_path = Path(self.temp_dir.name) / "test_checkpoint.db"
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -384,7 +383,7 @@ class TestCheckpointIntegration:
     def test_checkpoint_integration_with_database(self):
         """Test database checkpointing functionality in isolation."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path.join(temp_dir, "integration_test.db")
+            db_path = Path(temp_dir) / "integration_test.db"
             db = SensorDatabase(db_path)
 
             # Simulate inserting readings over time

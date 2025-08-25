@@ -1,7 +1,8 @@
 import json
-import logging
 import random
 from pathlib import Path
+
+from .safe_logger import get_safe_logger
 
 
 class LocationGenerator:
@@ -23,7 +24,7 @@ class LocationGenerator:
         self.configured_lon = config.get("longitude", "NOT_PROVIDED")
 
         # Set up logger
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_safe_logger(__name__)
 
         if self.enabled:
             self.cities = self._load_cities()

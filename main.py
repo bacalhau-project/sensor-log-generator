@@ -24,6 +24,7 @@ from src.database import SensorReadingSchema
 from src.error_utils import raise_with_context
 from src.llm_docs import print_llm_documentation
 from src.location import LocationGenerator
+from src.safe_logger import get_safe_logger, setup_safe_logging
 from src.simulator import SensorSimulator
 
 # Pydantic Models for Configuration (config.yaml)
@@ -278,14 +279,23 @@ class IdentityData(BaseModel):
 
 
 def load_config(config_path: str) -> dict:
-    """Load configuration from YAML file and validate its structure."""
-    from src.error_utils import raise_with_context
+    """Load configuration from a YAML file with validation.
 
+    Args:
+        config_path: Path to the YAML configuration file
+
+    Returns:
+        Validated configuration dictionary
+
+    Raises:
+        SystemExit: If configuration is invalid
+    """
+    logger = get_safe_logger(__name__)
     try:
         with Path.open(config_path) as f:
             raw_config_data = yaml.safe_load(f)
         if not isinstance(raw_config_data, dict):
-            logging.error(f"Config file {config_path} content must be a dictionary.")
+            logger.error(f"Config file {config_path} content must be a dictionary.")
             raise_with_context(
                 "Config file content must be a dictionary.",
                 TypeError("Config file content must be a dictionary."),
@@ -296,24 +306,24 @@ def load_config(config_path: str) -> dict:
 
         # Ensure monitoring and dynamic reloading are enabled
         if not config.get("monitoring", {}).get("enabled"):
-            logging.warning("Monitoring is required - enabling it")
+            logger.warning("Monitoring is required - enabling it")
             config.setdefault("monitoring", {})["enabled"] = True
 
         if not config.get("dynamic_reloading", {}).get("enabled"):
-            logging.warning("Dynamic reloading is required - enabling it")
+            logger.warning("Dynamic reloading is required - enabling it")
             config.setdefault("dynamic_reloading", {})["enabled"] = True
 
     except FileNotFoundError as e:
-        logging.exception(f"Configuration file not found: {config_path}")
+        logger.exception(f"Configuration file not found: {config_path}")
         raise_with_context(f"Configuration file not found: {config_path}", e)
     except yaml.YAMLError as e:
-        logging.exception(f"Error parsing YAML from configuration file {config_path}: {e}")
+        logger.exception(f"Error parsing YAML from configuration file {config_path}: {e}")
         raise_with_context(f"Error parsing YAML from configuration file {config_path}", e)
     except ValidationError as e:
-        logging.exception(f"Invalid configuration in {config_path}:\n{e}")
+        logger.exception(f"Invalid configuration in {config_path}:\n{e}")
         raise_with_context(f"Invalid configuration: {e}", e)
     except Exception as e:
-        logging.exception(f"Error loading configuration file {config_path}: {e!s}")
+        logger.exception(f"Error loading configuration file {config_path}: {e!s}")
         raise_with_context(f"Error loading configuration file {config_path}: {e!s}", e)
     else:
         return config
@@ -323,11 +333,12 @@ def load_identity(identity_path: str) -> dict:
     """Load sensor identity from JSON file and validate its structure using Pydantic."""
     from src.error_utils import raise_with_context
 
+    logger = get_safe_logger(__name__)
     try:
         with Path.open(identity_path) as f:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
-            logging.error(f"Identity file {identity_path} content must be a dictionary.")
+            logger.error(f"Identity file {identity_path} content must be a dictionary.")
             raise_with_context(
                 "Identity file content must be a dictionary.",
                 TypeError("Identity file content must be a dictionary."),
@@ -338,16 +349,16 @@ def load_identity(identity_path: str) -> dict:
         return identity_data_model.model_dump()  # Convert Pydantic model to dict
 
     except FileNotFoundError as e:
-        logging.exception(f"Identity file not found: {identity_path}")
+        logger.exception(f"Identity file not found: {identity_path}")
         raise_with_context(f"Identity file not found: {identity_path}", e)
     except json.JSONDecodeError as e:
-        logging.exception(f"Error decoding JSON from identity file {identity_path}: {e}")
+        logger.exception(f"Error decoding JSON from identity file {identity_path}: {e}")
         raise_with_context(f"Error decoding JSON from identity file {identity_path}", e)
     except ValidationError as e:
-        logging.exception(f"Invalid identity data in {identity_path}:\n{e}")
+        logger.exception(f"Invalid identity data in {identity_path}:\n{e}")
         raise_with_context(f"Invalid identity data: {e}", e)
     except Exception as e:
-        logging.exception(f"Error loading identity file {identity_path}: {e}")
+        logger.exception(f"Error loading identity file {identity_path}: {e}")
         raise_with_context(f"Error loading identity file {identity_path}: {e}", e)
 
 
@@ -401,7 +412,7 @@ def process_identity_and_location(identity_data: dict, app_config: dict) -> dict
         RuntimeError: If location generation fails when required.
     """
     working_identity = identity_data.copy()
-    logger = logging.getLogger(__name__)  # Use a local logger
+    logger = get_safe_logger(__name__)  # Use a local logger
 
     # Get random_location settings from app_config
     random_location_config = app_config.get("random_location", {})
@@ -637,7 +648,7 @@ def setup_logging(config):
     console_output = log_config.get("console_output", True)
 
     # Configure root logger
-    logger = logging.getLogger()
+    logger = get_safe_logger("")
     logger.setLevel(log_level)
 
     # Remove existing handlers
@@ -674,7 +685,7 @@ def file_watcher_thread(
     """
     Monitors a file for changes and updates the ConfigManager and SensorSimulator.
     """
-    logger = logging.getLogger(__name__)
+    logger = get_safe_logger(__name__)
     last_mtime = None
     if Path(file_path).exists():
         last_mtime = Path(file_path).stat().st_mtime
@@ -859,26 +870,21 @@ def main():
     # Set up basic logging first (before config is fully loaded)
     # Enable debug mode if requested
     if args.debug:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-            force=True,  # Force reconfiguration
-        )
+        setup_safe_logging(debug=True)
         # Set debug level for all loggers
-        logging.getLogger().setLevel(logging.DEBUG)
+        root_logger = get_safe_logger("")
+        root_logger.setLevel(logging.DEBUG)
         for name in ["src.simulator", "src.database", "src.anomaly", "SensorDatabase"]:
-            logging.getLogger(name).setLevel(logging.DEBUG)
+            logger = get_safe_logger(name)
+            logger.setLevel(logging.DEBUG)
 
-        logging.info("🔍 DEBUG MODE ENABLED - Extremely verbose logging active")
-        logging.debug("Debug flag detected from command line")
+        logger = get_safe_logger(__name__)
+        logger.info("🔍 DEBUG MODE ENABLED - Extremely verbose logging active")
+        logger.debug("Debug flag detected from command line")
         # Store debug flag globally
         os.environ["DEBUG_MODE"] = "true"
     else:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+        setup_safe_logging(level=logging.INFO)
 
     if not config_file_path:
         # This condition might be less likely to be hit if args.config has a default

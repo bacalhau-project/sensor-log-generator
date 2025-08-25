@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from datetime import UTC, datetime
-from zipfile import Path
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
@@ -17,11 +17,13 @@ from .anomaly import AnomalyGenerator
 from .config import ConfigManager
 from .database import SensorDatabase, SensorReadingSchema
 from .monitor import MonitoringServer
+from .safe_logger import get_safe_logger
 
 # Set up global logger
-logger = logging.getLogger(__name__)
+logger = get_safe_logger(__name__)
 # Inherit parent logger's level
-logger.setLevel(logging.getLogger().level)
+root_logger = get_safe_logger("")
+logger.setLevel(root_logger.level)
 
 
 class SensorSimulator:
@@ -82,7 +84,7 @@ class SensorSimulator:
             raise ValueError(msg)
 
         # Ensure the database directory exists
-        db_dir = Path.dirname(db_path)
+        db_dir = Path(db_path).parent
         if db_dir:
             db_dir.mkdir(parents=True, exist_ok=True)
 
@@ -101,7 +103,7 @@ class SensorSimulator:
         # Set up logging to file (using config from ConfigManager)
         log_file = self.config_manager.get_logging_config().get("file")
         if log_file:
-            log_dir = Path.dirname(log_file)
+            log_dir = Path(log_file).parent
             if log_dir:
                 log_dir.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_file)
@@ -135,7 +137,8 @@ class SensorSimulator:
             # ConfigManager is now passed in, no internal initialization.
 
             logging_config = self.config_manager.get_logging_config()
-            logging.getLogger().setLevel(getattr(logging, logging_config.get("level", "INFO")))
+            root_logger = get_safe_logger("")
+            root_logger.setLevel(getattr(logging, logging_config.get("level", "INFO")))
 
             self.sensor_config = self.config_manager.get_sensor_config()
             self.normal_params = self.config_manager.get_normal_parameters() or {}
@@ -367,7 +370,8 @@ class SensorSimulator:
 
         # Update logging configuration
         logging_config = self.config_manager.get_logging_config()
-        logging.getLogger().setLevel(getattr(logging, logging_config.get("level", "INFO")))
+        root_logger = get_safe_logger("")
+        root_logger.setLevel(getattr(logging, logging_config.get("level", "INFO")))
 
         # Update simulation parameters
         simulation_config = self.config_manager.get_simulation_config()

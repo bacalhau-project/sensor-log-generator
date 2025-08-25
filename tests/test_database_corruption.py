@@ -22,7 +22,7 @@ class TestDatabaseCorruptionHandling:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path.join(self.temp_dir.name, "test_corruption.db")
+        self.db_path = Path(self.temp_dir.name) / "test_corruption.db"
 
     def teardown_method(self):
         """Clean up after each test."""

@@ -6,7 +6,6 @@
 #     "pytest-timeout",
 # ]
 # ///
-
 import sqlite3
 import tempfile
 import time
@@ -24,7 +23,7 @@ class TestDatabaseReadOperations:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path.join(self.temp_dir.name, "test_read.db")
+        self.db_path = Path(self.temp_dir.name) / "test_read.db"
         self.db = SensorDatabase(self.db_path)
 
     def teardown_method(self):
@@ -371,10 +370,10 @@ class TestDatabaseEdgeCases:
 
     def test_corrupted_database_recovery(self):
         """Test handling of corrupted database."""
-        db_path = Path.join(self.temp_dir.name, "corrupted.db")
+        db_path = Path(self.temp_dir.name) / "corrupted.db"
 
         # Create a corrupted database file
-        with Path.open(db_path, "wb") as f:
+        with db_path.open("wb") as f:
             f.write(b"This is not a valid SQLite database")
 
         # Attempt to open corrupted database
@@ -383,7 +382,7 @@ class TestDatabaseEdgeCases:
 
     def test_missing_database_file(self):
         """Test handling when database file is missing."""
-        db_path = Path.join(self.temp_dir.name, "missing.db")
+        db_path = Path(self.temp_dir.name) / "missing.db"
 
         # Create database
         db = SensorDatabase(db_path)
@@ -404,7 +403,7 @@ class TestDatabaseEdgeCases:
 
     def test_read_only_database(self):
         """Test handling of read-only database."""
-        db_path = Path.join(self.temp_dir.name, "readonly.db")
+        db_path = Path(self.temp_dir.name) / "readonly.db"
 
         # Create database
         db = SensorDatabase(db_path)

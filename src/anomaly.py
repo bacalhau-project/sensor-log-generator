@@ -7,10 +7,12 @@ import time
 import numpy as np
 
 from .enums import AnomalyType, FirmwareVersion, Manufacturer, Model, ParameterType
+from .safe_logger import get_safe_logger
 
-logger = logging.getLogger(__name__)
+logger = get_safe_logger(__name__)
 # Inherit parent logger's level
-logger.setLevel(logging.getLogger().level)
+root_logger = get_safe_logger("")
+logger.setLevel(root_logger.level)
 
 
 class AnomalyGenerator:

@@ -81,7 +81,7 @@ class TestDatabaseConnectionManager:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path.join(self.temp_dir.name, "test.db")
+        self.db_path = str(Path(self.temp_dir.name) / "test.db")
 
     def teardown_method(self):
         """Clean up after each test."""
@@ -183,7 +183,7 @@ class TestSensorDatabase:
     def setup_method(self):
         """Set up test database for each test."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = Path.join(self.temp_dir.name, "test_sensor.db")
+        self.db_path = str(Path(self.temp_dir.name) / "test_sensor.db")
 
     def teardown_method(self):
         """Clean up after each test."""
