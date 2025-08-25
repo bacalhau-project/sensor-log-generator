@@ -4,11 +4,10 @@ import json
 import logging
 import math
 import os
-import random
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from main import process_identity_and_location  # Import from main.py
 from src.location import LocationGenerator
@@ -106,9 +105,7 @@ class TestLocationGenerator(unittest.TestCase):
             "enabled": True,
             "number_of_cities": 2,
             "gps_variation": 0,  # No variation for predictable testing of base coords
-            "cities_file": os.path.basename(
-                temp_cities_file
-            ),  # Relative path to file in temp_dir
+            "cities_file": os.path.basename(temp_cities_file),  # Relative path to file in temp_dir
         }
 
         # LocationGenerator constructs path relative to its own file, so we need to adjust
@@ -116,9 +113,7 @@ class TestLocationGenerator(unittest.TestCase):
         # Easiest for this test: place the temp_cities.json where the code expects it (e.g., project root)
         # Or, modify LocationGenerator to accept an absolute path if a flag is set (test mode)
         # For now, we will assume cities_file can be an absolute path for easier testing.
-        config["cities_file"] = (
-            temp_cities_file  # Use absolute path for test simplicity
-        )
+        config["cities_file"] = temp_cities_file  # Use absolute path for test simplicity
 
         generator = LocationGenerator(config)
         self.assertEqual(len(generator.cities), 2)
@@ -171,9 +166,7 @@ class TestLocationGenerator(unittest.TestCase):
         self.assertNotIn("CityPopLow", generator.cities)
 
         # Test that one of the top N cities is generated
-        for _ in range(
-            5
-        ):  # Generate a few times to increase chance of picking both if random
+        for _ in range(5):  # Generate a few times to increase chance of picking both if random
             city_name, _, _ = generator.generate_location()
             self.assertIn(city_name, ["CityPopHigh", "CityPopMid"])
 
@@ -187,7 +180,7 @@ class TestLocationGenerator(unittest.TestCase):
         }
         generator = LocationGenerator(config)
         self.assertEqual(len(generator.cities), 3)
-        self.assertTrue(all(c.startswith("City_") for c in generator.cities.keys()))
+        self.assertTrue(all(c.startswith("City_") for c in generator.cities))
 
         city, lat, lon = generator.generate_location()
         self.assertIn(city, generator.cities.keys())
@@ -332,38 +325,24 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
         app_config["random_location"]["number_of_cities"] = len(self.mock_city_data)
 
         # Run 1
-        processed_identity1 = process_identity_and_location(
-            identity_data.copy(), app_config
-        )
+        processed_identity1 = process_identity_and_location(identity_data.copy(), app_config)
         self.assertIn(processed_identity1["location"], self.mock_city_data.keys())
         base_city1_data = self.mock_city_data[processed_identity1["location"]]
-        self.assertNotEqual(
-            processed_identity1["latitude"], base_city1_data["latitude"]
-        )
-        self.assertNotEqual(
-            processed_identity1["longitude"], base_city1_data["longitude"]
-        )
+        self.assertNotEqual(processed_identity1["latitude"], base_city1_data["latitude"])
+        self.assertNotEqual(processed_identity1["longitude"], base_city1_data["longitude"])
 
         # Run 2 - to check if generated location is not constant (due to random.choice and fuzzing)
         # With a real LocationGenerator, city choice is random; fuzzing should ensure coord difference
-        processed_identity2 = process_identity_and_location(
-            identity_data.copy(), app_config
-        )
+        processed_identity2 = process_identity_and_location(identity_data.copy(), app_config)
         self.assertIn(processed_identity2["location"], self.mock_city_data.keys())
         base_city2_data = self.mock_city_data[processed_identity2["location"]]
-        self.assertNotEqual(
-            processed_identity2["latitude"], base_city2_data["latitude"]
-        )
-        self.assertNotEqual(
-            processed_identity2["longitude"], base_city2_data["longitude"]
-        )
+        self.assertNotEqual(processed_identity2["latitude"], base_city2_data["latitude"])
+        self.assertNotEqual(processed_identity2["longitude"], base_city2_data["longitude"])
 
         # Check that the two generated locations are different (either city name or fuzzed coords)
         # With fuzzing, even if the same city is picked, coords should differ.
         # If different cities are picked, location names will differ.
-        location_different = (
-            processed_identity1["location"] != processed_identity2["location"]
-        )
+        location_different = processed_identity1["location"] != processed_identity2["location"]
         coords_different = (
             processed_identity1["latitude"] != processed_identity2["latitude"]
             or processed_identity1["longitude"] != processed_identity2["longitude"]
@@ -373,9 +352,7 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
             "Generated locations/coords should not be constant across calls.",
         )
 
-    @patch(
-        "main.generate_sensor_id"
-    )  # Not expected to be called if erroring before ID gen
+    @patch("main.generate_sensor_id")  # Not expected to be called if erroring before ID gen
     @patch("main.LocationGenerator")
     def test_location_not_specified_random_disabled_error(
         self, MockLocationGenerator, mock_generate_id
@@ -390,9 +367,7 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
         app_config = self.base_app_config.copy()
         app_config["random_location"]["enabled"] = False
 
-        with self.assertRaisesRegex(
-            RuntimeError, "Required geo-fields .* are missing or invalid"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Required geo-fields .* are missing or invalid"):
             process_identity_and_location(identity_data, app_config)
 
         MockLocationGenerator.assert_not_called()

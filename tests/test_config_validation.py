@@ -1,9 +1,6 @@
-import json
-
 # import os # No longer needed for monkeypatching
 # from unittest.mock import mock_open # No longer needed for monkeypatching
 import pytest
-import yaml
 
 from src.config import ConfigManager
 from src.simulator import SensorSimulator
@@ -49,12 +46,8 @@ class TestNodeIdentityValidation:
         """Tests identity validation when a required field (e.g., location) is missing."""
         invalid_identity = MINIMAL_VALID_IDENTITY.copy()
         del invalid_identity["location"]
-        with pytest.raises(
-            ValueError, match="Location is required in identity configuration"
-        ):
-            config_manager = ConfigManager(
-                config=MINIMAL_VALID_CONFIG, identity=invalid_identity
-            )
+        with pytest.raises(ValueError, match="Location is required in identity configuration"):
+            config_manager = ConfigManager(config=MINIMAL_VALID_CONFIG, identity=invalid_identity)
             SensorSimulator(config_manager=config_manager)
 
     def test_unknown_field_identity(self):
@@ -98,9 +91,7 @@ class TestNodeIdentityValidation:
             ValueError,
             match=r"Invalid firmware version.*Must be a valid semantic version",
         ):
-            config_manager = ConfigManager(
-                config=MINIMAL_VALID_CONFIG, identity=invalid_identity
-            )
+            config_manager = ConfigManager(config=MINIMAL_VALID_CONFIG, identity=invalid_identity)
             SensorSimulator(config_manager=config_manager)
 
 
@@ -118,20 +109,14 @@ class TestConfigYamlValidation:
                 f"Valid config should not raise ValueError during SensorSimulator init: {e}"
             )
         except Exception as e:
-            pytest.fail(
-                f"Valid config raised an unexpected error during SensorSimulator init: {e}"
-            )
+            pytest.fail(f"Valid config raised an unexpected error during SensorSimulator init: {e}")
 
     def test_missing_required_field_config(self):
         """Tests config validation when a required field (e.g., database.path) is missing."""
         invalid_config = MINIMAL_VALID_CONFIG.copy()
         invalid_config["database"] = {}  # Missing path
-        with pytest.raises(
-            ValueError, match="Database path not specified in config.yaml"
-        ):
-            config_manager = ConfigManager(
-                config=invalid_config, identity=MINIMAL_VALID_IDENTITY
-            )
+        with pytest.raises(ValueError, match="Database path not specified in config.yaml"):
+            config_manager = ConfigManager(config=invalid_config, identity=MINIMAL_VALID_IDENTITY)
             SensorSimulator(config_manager=config_manager)
 
     def test_unknown_field_config(self):
@@ -184,9 +169,7 @@ class TestConfigYamlValidation:
 
         # Assuming ConfigManager just loads and doesn't strictly type check on load for all fields.
         try:
-            config_manager = ConfigManager(
-                config=invalid_config, identity=MINIMAL_VALID_IDENTITY
-            )
+            config_manager = ConfigManager(config=invalid_config, identity=MINIMAL_VALID_IDENTITY)
             sim = SensorSimulator(config_manager=config_manager)
             # To actually trigger the type error for 'readings_per_second' being a string,
             # we would need to call a method that performs an operation expecting it to be a number.
@@ -208,9 +191,7 @@ class TestConfigYamlValidation:
                 f"Config with invalid value type raised TypeError too early or unexpectedly: {e}"
             )
         except Exception as e:
-            pytest.fail(
-                f"Config with invalid value type raised an unexpected error: {e}"
-            )
+            pytest.fail(f"Config with invalid value type raised an unexpected error: {e}")
 
         # A better way to test this specific scenario for config.yaml would be to directly test
         # the part of the code that *consumes* this value and expects a certain type,

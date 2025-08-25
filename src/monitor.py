@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 
 class MonitoringRequestHandler(BaseHTTPRequestHandler):
@@ -18,7 +18,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
         # AND ignore common paths like / and /favicon.ico
         if args and len(args) >= 3:  # Check length for request_line, status_code, size
             try:
-                request_line = str(args[0]) # e.g., "GET / HTTP/1.1"
+                request_line = str(args[0])  # e.g., "GET / HTTP/1.1"
                 status_code = int(args[1])
 
                 # Extract path from request_line (e.g., "/")
@@ -33,7 +33,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
                 # (This case should be rare with the standard http.server format)
                 logging.info(f"Monitor server: {format % args}")
         else:
-             # Fall back to original logging if args format is unexpected
+            # Fall back to original logging if args format is unexpected
             logging.info(f"Monitor server: {format % args}")
 
     # ADDED: New method to suppress error logging
@@ -79,9 +79,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
 
         # Check database health
         db_healthy = (
-            self.simulator.database.is_healthy()
-            if hasattr(self.simulator, "database")
-            else False
+            self.simulator.database.is_healthy() if hasattr(self.simulator, "database") else False
         )
 
         # Overall health status
@@ -152,9 +150,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
         """Handle database statistics request."""
         try:
             if not hasattr(self.simulator, "database"):
-                return self._send_json_response(
-                    400, {"error": "Database not initialized"}
-                )
+                return self._send_json_response(400, {"error": "Database not initialized"})
 
             stats = self.simulator.database.get_database_stats()
 
@@ -174,18 +170,14 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
                 "performance": {
                     "total_inserts": stats["performance_metrics"]["total_inserts"],
                     "total_batches": stats["performance_metrics"]["total_batches"],
-                    "avg_batch_size": round(
-                        stats["performance_metrics"]["avg_batch_size"], 2
-                    ),
+                    "avg_batch_size": round(stats["performance_metrics"]["avg_batch_size"], 2),
                     "avg_insert_time_ms": round(
                         stats["performance_metrics"]["avg_insert_time_ms"], 2
                     ),
                     "total_insert_time_s": round(
                         stats["performance_metrics"]["total_insert_time_s"], 2
                     ),
-                    "pending_batch_size": stats["performance_metrics"][
-                        "pending_batch_size"
-                    ],
+                    "pending_batch_size": stats["performance_metrics"]["pending_batch_size"],
                 },
                 "sync_status": {
                     "total": stats["sync_stats"]["total"],
@@ -200,7 +192,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
             formatted_stats["files"] = stats.get("files", {})
             return self._send_json_response(200, formatted_stats)
         except Exception as e:
-            logging.error(f"Error getting database stats: {e}")
+            logging.exception(f"Error getting database stats: {e}")
             return self._send_json_response(500, {"error": str(e)})
 
     def _format_bytes(self, size_bytes):
@@ -217,7 +209,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
         # ADDED: Reject GET requests with a body
-        content_length = self.headers.get('Content-Length')
+        content_length = self.headers.get("Content-Length")
         if content_length and int(content_length) > 0:
             self.send_error(400, "GET requests must not have a body")
             return
@@ -247,9 +239,7 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
                     "/samplez": "Sample data endpoint",
                     "/db_stats": "Database statistics endpoint",
                 },
-                "simulator_running": self.simulator.running
-                if self.simulator
-                else False,
+                "simulator_running": self.simulator.running if self.simulator else False,
             }
             self._send_json_response(200, endpoints)
 
@@ -288,14 +278,14 @@ class MonitoringServer:
             self.running = True
             logging.info(f"Monitoring server started on http://{self.host}:{self.port}")
         except Exception as e:
-            logging.error(f"Failed to start monitoring server: {e}")
+            logging.exception(f"Failed to start monitoring server: {e}")
 
     def _run_server(self):
         """Run the HTTP server."""
         try:
             self.server.serve_forever()
         except Exception as e:
-            logging.error(f"Error in monitoring server: {e}")
+            logging.exception(f"Error in monitoring server: {e}")
             self.running = False
 
     def stop(self):
@@ -309,4 +299,4 @@ class MonitoringServer:
             self.running = False
             logging.info("Monitoring server stopped")
         except Exception as e:
-            logging.error(f"Error stopping monitoring server: {e}")
+            logging.exception(f"Error stopping monitoring server: {e}")

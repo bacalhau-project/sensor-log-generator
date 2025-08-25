@@ -1,52 +1,52 @@
+import atexit
 import logging
 import os
 import platform
-import signal
+import shutil
 import sqlite3
 import subprocess
 import threading
 import time
-import atexit
-import shutil
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import wraps
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any
 
 import psutil
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 # Define a Pydantic model for the sensor reading schema
 class SensorReadingSchema(BaseModel):
     timestamp: str  # ISO 8601 format
     sensor_id: str
-    temperature: Optional[float] = None
-    humidity: Optional[float] = None
-    pressure: Optional[float] = None
-    vibration: Optional[float] = None
-    voltage: Optional[float] = None
-    status_code: Optional[int] = None
-    anomaly_flag: Optional[bool] = False
-    anomaly_type: Optional[str] = None
-    firmware_version: Optional[str] = None
-    model: Optional[str] = None
-    manufacturer: Optional[str] = None
-    location: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    original_timezone: Optional[str] = None  # UTC offset string like "+00:00" or "-04:00"
-    synced: Optional[bool] = False
+    temperature: float | None = None
+    humidity: float | None = None
+    pressure: float | None = None
+    vibration: float | None = None
+    voltage: float | None = None
+    status_code: int | None = None
+    anomaly_flag: bool | None = False
+    anomaly_type: str | None = None
+    firmware_version: str | None = None
+    model: str | None = None
+    manufacturer: str | None = None
+    location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    original_timezone: str | None = None  # UTC offset string like "+00:00" or "-04:00"
+    synced: bool | None = False
 
     # New fields from enhanced identity
-    serial_number: Optional[str] = None
-    manufacture_date: Optional[str] = None
-    deployment_type: Optional[str] = None
-    installation_date: Optional[str] = None
-    height_meters: Optional[float] = None
-    orientation_degrees: Optional[float] = None
-    instance_id: Optional[str] = None
-    sensor_type: Optional[str] = None
+    serial_number: str | None = None
+    manufacture_date: str | None = None
+    deployment_type: str | None = None
+    installation_date: str | None = None
+    height_meters: float | None = None
+    orientation_degrees: float | None = None
+    instance_id: str | None = None
+    sensor_type: str | None = None
 
     # Example for future: Add custom validation if needed
     # @validator('temperature')
@@ -110,12 +110,12 @@ def retry_on_error(max_retries=3, retry_delay=1.0):
                         )
                         if debug_mode:
                             logging.getLogger("SensorDatabase").debug(
-                                f"Error type: {type(e).__name__}, Error details: {str(e)}"
+                                f"Error type: {type(e).__name__}, Error details: {e!s}"
                             )
                         time.sleep(retry_delay)
                     else:
                         # Log the final failure
-                        logging.error(
+                        logging.exception(
                             f"Database operation failed after {max_retries + 1} attempts: {e}"
                         )
                         raise
@@ -258,7 +258,7 @@ class DatabaseConnectionManager:
             finally:
                 cursor.close()
 
-    def execute_query(self, query: str, params: tuple = ()) -> List[Any]:
+    def execute_query(self, query: str, params: tuple = ()) -> list[Any]:
         """Execute a SELECT query and return results.
 
         Args:
@@ -286,7 +286,7 @@ class DatabaseConnectionManager:
             cursor.execute(query, params)
             return cursor.rowcount
 
-    def execute_many(self, query: str, params_list: List[tuple]) -> int:
+    def execute_many(self, query: str, params_list: list[tuple]) -> int:
         """Execute a query multiple times with different parameters.
 
         Args:
@@ -344,7 +344,7 @@ class DatabaseConnectionManager:
                     return None
 
             except sqlite3.Error as e:
-                self.logger.error(f"Error during checkpoint/commit: {e}")
+                self.logger.exception(f"Error during checkpoint/commit: {e}")
                 return None
 
     def periodic_checkpoint(self):
@@ -385,7 +385,7 @@ class DatabaseConnectionManager:
                 self._local.conn.close()
                 self._local.conn = None
             except Exception as e:
-                self.logger.error(f"Error closing connection: {e}")
+                self.logger.exception(f"Error closing connection: {e}")
 
 
 class SensorDatabase:
@@ -435,7 +435,9 @@ class SensorDatabase:
                     # Also remove journal files if they exist
                     self._cleanup_database_files(self.db_path)
                 except OSError as e:
-                    self.logger.error(f"Failed to delete existing database '{self.db_path}': {e}")
+                    self.logger.exception(
+                        f"Failed to delete existing database '{self.db_path}': {e}"
+                    )
                     # Try to continue anyway - maybe the file is locked but we can still create a new connection
                     self.logger.warning("Will attempt to continue despite deletion failure")
             else:
@@ -453,7 +455,7 @@ class SensorDatabase:
                             self.logger.info(f"Corrupted database backed up to: {backup_path}")
                             self._cleanup_database_files(self.db_path, skip_main=True)
                         except Exception as e:
-                            self.logger.error(f"Failed to backup corrupted database: {e}")
+                            self.logger.exception(f"Failed to backup corrupted database: {e}")
                             self._cleanup_database_files(self.db_path)
                 else:
                     self.logger.info(
@@ -634,7 +636,7 @@ class SensorDatabase:
                 self.conn_manager.checkpoint("TRUNCATE")  # TRUNCATE for WAL, commit for DELETE
                 self.close()
             except Exception as e:
-                self.logger.error(f"Error during shutdown commit: {e}")
+                self.logger.exception(f"Error during shutdown commit: {e}")
 
         # Register with atexit
         atexit.register(shutdown_handler)
@@ -800,7 +802,7 @@ class SensorDatabase:
                 return False
 
         except Exception as e:
-            self.logger.error(f"Recovery failed: {e}")
+            self.logger.exception(f"Recovery failed: {e}")
             return False
 
     def _cleanup_database_files(self, db_path: str, skip_main: bool = False):
@@ -861,7 +863,7 @@ class SensorDatabase:
                     self._retry_failed_writes()
 
                 except Exception as e:
-                    self.logger.error(f"Error in background commit thread: {e}")
+                    self.logger.exception(f"Error in background commit thread: {e}")
 
         self._commit_thread = threading.Thread(target=periodic_commit, daemon=True)
         self._commit_thread.start()
@@ -886,7 +888,9 @@ class SensorDatabase:
             except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
                 error_msg = str(e).lower()
                 if "malformed" in error_msg or "corrupt" in error_msg:
-                    self.logger.error(f"Database corruption detected during initialization: {e}")
+                    self.logger.exception(
+                        f"Database corruption detected during initialization: {e}"
+                    )
                     # Try one recovery attempt
                     self.logger.info("Attempting recovery during initialization...")
                     self._cleanup_database_files(self.db_path)
@@ -937,7 +941,7 @@ class SensorDatabase:
                     # Add other type mappings as needed, e.g. datetime.datetime -> TEXT
 
                     # Handle NOT NULL for non-optional fields by checking if None is a valid type
-                    is_optional = (
+                    (
                         type(None) in getattr(field.annotation, "__args__", [])
                         or field.default is not None
                         or field.default_factory is not None
@@ -989,7 +993,7 @@ class SensorDatabase:
 
             self.logger.info("Database initialized successfully")
         except Exception as e:
-            self.logger.error(f"Error initializing database: {e}")
+            self.logger.exception(f"Error initializing database: {e}")
             raise
 
     def store_reading(
@@ -1060,16 +1064,16 @@ class SensorDatabase:
                 # Check if we're past the 15-second retry threshold
                 if self.failure_retry_count >= len(self.failure_buffer_retry_intervals):
                     # We've reached the 15-second interval, now log as error
-                    self.logger.error(
+                    self.logger.exception(
                         f"DISK I/O ERROR persists after {self.failure_retry_count} retries - Buffering reading in memory"
                     )
                     if self.failure_retry_count == len(self.failure_buffer_retry_intervals):
                         # First time hitting the threshold, log possible causes
-                        self.logger.error("Possible causes:")
-                        self.logger.error("  - Docker volume mount issues")
-                        self.logger.error("  - Host filesystem full or read-only")
-                        self.logger.error("  - Container resource limits reached")
-                        self.logger.error("  - Filesystem corruption")
+                        self.logger.exception("Possible causes:")
+                        self.logger.exception("  - Docker volume mount issues")
+                        self.logger.exception("  - Host filesystem full or read-only")
+                        self.logger.exception("  - Container resource limits reached")
+                        self.logger.exception("  - Filesystem corruption")
                 else:
                     # Still in early retry phase, use debug logging only
                     if len(self.failure_buffer) == 0:
@@ -1095,19 +1099,19 @@ class SensorDatabase:
                 return
             else:
                 # Other operational errors - log immediately
-                self.logger.error(f"SQLite Operational Error storing reading: {error_msg}")
+                self.logger.exception(f"SQLite Operational Error storing reading: {error_msg}")
 
             raise
         except Exception as e:
-            self.logger.error(f"Error storing reading: {e}")
+            self.logger.exception(f"Error storing reading: {e}")
 
             if self.debug_mode:
                 self.logger.debug(f"Exception type: {type(e).__name__}")
-                self.logger.debug(f"Exception details: {str(e)}")
+                self.logger.debug(f"Exception details: {e!s}")
 
             raise
 
-    def get_unsynced_readings(self, limit: int = 1000) -> List[Dict]:
+    def get_unsynced_readings(self, limit: int = 1000) -> list[dict]:
         """Get readings that haven't been synced yet.
 
         Args:
@@ -1133,16 +1137,16 @@ class SensorDatabase:
 
             readings = []
             for row in rows:
-                reading = dict(zip(columns, row))
+                reading = dict(zip(columns, row, strict=False))
                 reading["anomaly_flag"] = bool(reading["anomaly_flag"])
                 readings.append(reading)
 
             return readings
         except Exception as e:
-            self.logger.error(f"Error getting unsynced readings: {e}")
+            self.logger.exception(f"Error getting unsynced readings: {e}")
             return []
 
-    def mark_readings_as_synced(self, reading_ids: List[int]):
+    def mark_readings_as_synced(self, reading_ids: list[int]):
         """Mark readings as synced.
 
         Args:
@@ -1162,10 +1166,10 @@ class SensorDatabase:
             self.conn_manager.execute_write(query, reading_ids)
 
         except Exception as e:
-            self.logger.error(f"Error marking readings as synced: {e}")
+            self.logger.exception(f"Error marking readings as synced: {e}")
             raise
 
-    def get_reading_stats(self) -> Dict:
+    def get_reading_stats(self) -> dict:
         """Get statistics about the readings in the database.
 
         Returns:
@@ -1210,7 +1214,7 @@ class SensorDatabase:
                 "sensor_stats": sensor_stats,
             }
         except Exception as e:
-            self.logger.error(f"Error getting reading stats: {e}")
+            self.logger.exception(f"Error getting reading stats: {e}")
             return {
                 "total_readings": 0,
                 "unsynced_readings": 0,
@@ -1262,7 +1266,7 @@ class SensorDatabase:
         location = location or "Unknown"
 
         # Use UTC for ISO format timestamps
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         # Check resources before adding to batch
         if not self._check_resources():
@@ -1322,8 +1326,8 @@ class SensorDatabase:
             start_time = time.time()
             try:
                 query = """
-                    INSERT INTO sensor_readings 
-                    (timestamp, sensor_id, temperature, vibration, voltage, 
+                    INSERT INTO sensor_readings
+                    (timestamp, sensor_id, temperature, vibration, voltage,
                     status_code, anomaly_flag, anomaly_type, firmware_version,
                     model, manufacturer, location, original_timezone, synced)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1355,7 +1359,7 @@ class SensorDatabase:
                         if self.insert_count > 0
                         else 0
                     )
-                    logger.info(
+                    self.logger.info(
                         f"Batch insert performance: {batch_size} readings in {batch_time:.3f}s "
                         f"(avg: {avg_time_per_reading:.2f}ms/reading)"
                     )
@@ -1366,7 +1370,7 @@ class SensorDatabase:
 
                 return batch_size
             except sqlite3.Error as e:
-                logging.error(f"Error committing batch: {e}")
+                logging.exception(f"Error committing batch: {e}")
                 raise
 
     @retry_on_error()
@@ -1400,7 +1404,7 @@ class SensorDatabase:
 
             return self.conn_manager.execute_query(query, tuple(params))
         except sqlite3.Error as e:
-            logging.error(f"Error retrieving readings: {e}")
+            logging.exception(f"Error retrieving readings: {e}")
             raise
 
     def close(self):
@@ -1439,7 +1443,7 @@ class SensorDatabase:
                             f"Saved {len(self.failure_buffer)} unwritten readings to {recovery_file}"
                         )
                     except Exception as e:
-                        self.logger.error(f"Failed to save recovery file: {e}")
+                        self.logger.exception(f"Failed to save recovery file: {e}")
 
             # Force final checkpoint/commit for maximum durability
             self.logger.info("Executing final data checkpoint...")
@@ -1461,10 +1465,10 @@ class SensorDatabase:
             self.logger.info("Database connection closed successfully")
 
         except Exception as e:
-            self.logger.error(f"Error closing database connection: {e}")
+            self.logger.exception(f"Error closing database connection: {e}")
 
     @retry_on_error()
-    def get_database_stats(self) -> Dict:
+    def get_database_stats(self) -> dict:
         """Get comprehensive database statistics.
 
         Returns:
@@ -1516,7 +1520,7 @@ class SensorDatabase:
                         stats["files"]["log"]["size_bytes"] = os.path.getsize(log_path)
                         stats["files"]["log"]["exists"] = True
                 except OSError as e:
-                    self.logger.error(f"Error getting file sizes: {e}")
+                    self.logger.exception(f"Error getting file sizes: {e}")
 
             # Get total readings count
             stats["total_readings"] = self.conn_manager.execute_query(
@@ -1538,7 +1542,7 @@ class SensorDatabase:
 
             # Get table statistics
             table_stats_result = self.conn_manager.execute_query("""
-                SELECT 
+                SELECT
                     COUNT(*) as total_rows,
                     COUNT(DISTINCT sensor_id) as unique_sensors,
                     COUNT(DISTINCT location) as unique_locations,
@@ -1574,7 +1578,7 @@ class SensorDatabase:
 
             # Get sync statistics
             sync_stats_result = self.conn_manager.execute_query("""
-                SELECT 
+                SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN synced = 1 THEN 1 ELSE 0 END) as synced,
                     SUM(CASE WHEN synced = 0 THEN 1 ELSE 0 END) as unsynced
@@ -1592,7 +1596,7 @@ class SensorDatabase:
 
             # Get anomaly statistics
             anomaly_stats_result = self.conn_manager.execute_query("""
-                SELECT 
+                SELECT
                     anomaly_type,
                     COUNT(*) as count
                 FROM sensor_readings
@@ -1611,7 +1615,7 @@ class SensorDatabase:
             return stats
 
         except Exception as e:
-            self.logger.error(f"Error getting database stats: {e}")
+            self.logger.exception(f"Error getting database stats: {e}")
             return {
                 "error": str(e),
                 "total_readings": 0,
@@ -1740,7 +1744,7 @@ class SensorDatabase:
 
                         # Only log as error after we've reached the 15-second interval
                         if self.failure_retry_count >= len(self.failure_buffer_retry_intervals):
-                            self.logger.error(
+                            self.logger.exception(
                                 f"Disk I/O error persists after {self.failure_retry_count} attempts, next retry in {next_interval:.0f}s"
                             )
                         else:
@@ -1790,7 +1794,7 @@ class SensorDatabase:
             result = self.conn_manager.execute_query("SELECT 1")
             return result is not None and result[0][0] == 1
         except Exception as e:
-            logging.error(f"Database health check failed: {e}")
+            logging.exception(f"Database health check failed: {e}")
             return False
 
     # Keep existing utility methods unchanged
@@ -1876,7 +1880,7 @@ class SensorDatabase:
 
         # Check cgroup for docker/kubernetes
         try:
-            with open("/proc/self/cgroup", "r") as f:
+            with open("/proc/self/cgroup") as f:
                 cgroup_content = f.read()
                 if "docker" in cgroup_content or "kubepods" in cgroup_content:
                     self.logger.debug("Detected container via /proc/self/cgroup")

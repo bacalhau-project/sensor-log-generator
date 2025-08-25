@@ -1,9 +1,7 @@
-import json
 import logging
 import os
 
 # Removed: from threading import Event, Thread # No longer needed for file watching
-import yaml
 
 
 class ConfigManager:
@@ -56,9 +54,7 @@ class ConfigManager:
         # Override sensor ID if environment variable is set
         if "SENSOR_ID" in os.environ:
             self.identity["id"] = os.environ["SENSOR_ID"]
-            logging.info(
-                f"Overriding sensor ID from environment variable: {self.identity['id']}"
-            )
+            logging.info(f"Overriding sensor ID from environment variable: {self.identity['id']}")
 
     # Removed: load_config(self) method
     # Removed: load_node_identity(self) method

@@ -1,16 +1,15 @@
 """Integration tests for the sensor simulator system."""
 
 import json
-import os
 import signal
 import sqlite3
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import pytest
 import yaml
 
@@ -137,9 +136,9 @@ class TestMainIntegration:
         stderr = result.stderr
 
         # Check that the process completed successfully
-        assert result.returncode == 0, (
-            f"Process failed with code {result.returncode}. Stderr: {stderr}"
-        )
+        assert (
+            result.returncode == 0
+        ), f"Process failed with code {result.returncode}. Stderr: {stderr}"
 
         # Check that database was created
         db_path = temp_dirs["data"] / "test.db"

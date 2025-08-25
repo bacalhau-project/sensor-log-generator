@@ -2,11 +2,10 @@ import json
 import logging
 import os
 import random
-from typing import Dict, Tuple
 
 
 class LocationGenerator:
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         """Initialize the location generator with configuration.
 
         Args:
@@ -28,15 +27,13 @@ class LocationGenerator:
 
         if self.enabled:
             self.cities = self._load_cities()
-            self.logger.info(
-                f"Random location generation enabled with {len(self.cities)} cities"
-            )
+            self.logger.info(f"Random location generation enabled with {len(self.cities)} cities")
         else:
             self.logger.info(
                 f"Using configured location: {self.configured_city} at ({self.configured_lat}, {self.configured_lon})"
             )
 
-    def _load_cities(self) -> Dict:
+    def _load_cities(self) -> dict:
         """Load cities from file or generate random ones.
 
         Returns:
@@ -51,7 +48,7 @@ class LocationGenerator:
             # Try to load from file if it exists
             if os.path.exists(cities_file_path):
                 self.logger.info(f"Found cities file at {cities_file_path}")
-                with open(cities_file_path, "r") as f:
+                with open(cities_file_path) as f:
                     cities_data = json.load(f)
                     # The file has a top-level 'cities' key containing an array
                     cities_list = cities_data.get("cities", [])
@@ -77,13 +74,9 @@ class LocationGenerator:
                         }
 
                     # Log the top cities by population
-                    self.logger.info(
-                        f"Top {self.number_of_cities} cities by population:"
-                    )
+                    self.logger.info(f"Top {self.number_of_cities} cities by population:")
                     for i, (name, data) in enumerate(cities.items(), 1):
-                        self.logger.info(
-                            f"{i}. {name}: Population {data['population']:,}"
-                        )
+                        self.logger.info(f"{i}. {name}: Population {data['population']:,}")
 
                     return cities
             else:
@@ -107,7 +100,7 @@ class LocationGenerator:
         self.logger.warning("Using randomly generated cities as fallback")
         return cities
 
-    def _generate_random_offset(self) -> Tuple[float, float]:
+    def _generate_random_offset(self) -> tuple[float, float]:
         """Generate random GPS offset within specified variation.
 
         Returns:
@@ -121,13 +114,11 @@ class LocationGenerator:
         lat_offset = random.uniform(-variation_degrees, variation_degrees)
         lon_offset = random.uniform(-variation_degrees, variation_degrees)
 
-        self.logger.info(
-            f"Generated random offsets: ({lat_offset:.6f}, {lon_offset:.6f})"
-        )
+        self.logger.info(f"Generated random offsets: ({lat_offset:.6f}, {lon_offset:.6f})")
 
         return lat_offset, lon_offset
 
-    def generate_location(self) -> Tuple[str, float, float]:
+    def generate_location(self) -> tuple[str, float, float]:
         """Generate a random location.
 
         Returns:
@@ -135,10 +126,7 @@ class LocationGenerator:
         """
         if not self.enabled:
             # Return configured values or None if not provided
-            if (
-                self.configured_lat != "NOT_PROVIDED"
-                and self.configured_lon != "NOT_PROVIDED"
-            ):
+            if self.configured_lat != "NOT_PROVIDED" and self.configured_lon != "NOT_PROVIDED":
                 return (
                     self.configured_city,
                     float(self.configured_lat),
@@ -158,9 +146,7 @@ class LocationGenerator:
         lon = base_lon + lon_offset
 
         # Log the base location and the offset applied
-        self.logger.info(
-            f"Base city location: {city_name} at ({base_lat:.6f}, {base_lon:.6f})"
-        )
+        self.logger.info(f"Base city location: {city_name} at ({base_lat:.6f}, {base_lon:.6f})")
         self.logger.info(f"Applied GPS offset: ({lat_offset:.6f}, {lon_offset:.6f})")
         self.logger.info(f"Final location: {city_name} at ({lat:.6f}, {lon:.6f})")
 

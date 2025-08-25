@@ -11,17 +11,18 @@ import string
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.config import ConfigManager
 from src.database import SensorReadingSchema
+from src.llm_docs import print_llm_documentation
 from src.location import LocationGenerator
 from src.simulator import SensorSimulator
-from src.llm_docs import print_llm_documentation, save_llm_documentation
 
 # Pydantic Models for Configuration (config.yaml)
 
@@ -32,8 +33,8 @@ from src.llm_docs import print_llm_documentation, save_llm_documentation
 class ParameterRange(BaseModel):
     """Reusable model for parameter ranges."""
 
-    min_val: Union[int, float] = Field(alias="min")
-    max_val: Union[int, float] = Field(alias="max")
+    min_val: int | float = Field(alias="min")
+    max_val: int | float = Field(alias="max")
 
 
 class DatabaseConfig(BaseModel):
@@ -41,8 +42,8 @@ class DatabaseConfig(BaseModel):
 
     path: str
     backup_enabled: bool
-    backup_interval_seconds: Union[int, float]
-    max_backup_size_mb: Union[int, float]
+    backup_interval_seconds: int | float
+    max_backup_size_mb: int | float
     compression_enabled: bool
 
     @field_validator("backup_interval_seconds")
@@ -61,18 +62,18 @@ class DatabaseConfig(BaseModel):
 class SimulationSettings(BaseModel):
     """Simulation and runtime settings."""
 
-    interval_seconds: Union[int, float]
-    replicas_count: Optional[int] = 1
+    interval_seconds: int | float
+    replicas_count: int | None = 1
 
     # Location randomization
     random_location_enabled: bool = False
-    latitude_range: Optional[List[Union[int, float]]] = None
-    longitude_range: Optional[List[Union[int, float]]] = None
-    location_update_interval: Optional[Union[int, float]] = None
+    latitude_range: list[int | float] | None = None
+    longitude_range: list[int | float] | None = None
+    location_update_interval: int | float | None = None
 
     # Dynamic reloading
     dynamic_reload_enabled: bool = False
-    reload_check_interval: Union[int, float] = 5
+    reload_check_interval: int | float = 5
 
     @field_validator("interval_seconds")
     def validate_interval(cls, v):
@@ -117,8 +118,8 @@ class SensorParameters(BaseModel):
 
     # Anomaly settings
     anomalies_enabled: bool = False
-    anomaly_probability: Union[int, float] = 0.1
-    anomaly_types: Optional[Dict[str, Any]] = None
+    anomaly_probability: int | float = 0.1
+    anomaly_types: dict[str, Any] | None = None
 
 
 class AppConfig(BaseModel):
@@ -139,7 +140,7 @@ class AppConfig(BaseModel):
     monitoring_port: int = 8080
 
     # Sensor config
-    sensor: Optional[Dict[str, Any]] = None
+    sensor: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -151,7 +152,7 @@ class AppConfig(BaseModel):
         return v.upper()
 
 
-def process_config(raw_config: Dict) -> Dict:
+def process_config(raw_config: dict) -> dict:
     """Process configuration into expected format."""
     # Simply return the config with defaults for monitoring
     config = raw_config.copy()
@@ -172,11 +173,11 @@ def process_config(raw_config: Dict) -> Dict:
 
 # Pydantic Models for Identity (node_identity.json)
 class LocationData(BaseModel):
-    city: Optional[str] = None
-    state: Optional[str] = None
-    coordinates: Optional[Dict[str, Union[int, float]]] = None
-    timezone: Optional[str] = None
-    address: Optional[str] = None
+    city: str | None = None
+    state: str | None = None
+    coordinates: dict[str, int | float] | None = None
+    timezone: str | None = None
+    address: str | None = None
 
     @field_validator("coordinates")
     def validate_coordinates(cls, v):
@@ -185,7 +186,7 @@ class LocationData(BaseModel):
                 raise ValueError("coordinates must contain 'latitude' and 'longitude'")
             lat = v["latitude"]
             lon = v["longitude"]
-            if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            if not isinstance(lat, int | float) or not isinstance(lon, int | float):
                 raise ValueError("latitude and longitude must be numeric")
             if not (-90 <= lat <= 90):
                 raise ValueError("latitude must be between -90 and 90")
@@ -195,11 +196,11 @@ class LocationData(BaseModel):
 
 
 class DeviceInfoData(BaseModel):
-    manufacturer: Optional[str] = None
-    model: Optional[str] = None
-    firmware_version: Optional[str] = None
-    serial_number: Optional[str] = None
-    manufacture_date: Optional[str] = None
+    manufacturer: str | None = None
+    model: str | None = None
+    firmware_version: str | None = None
+    serial_number: str | None = None
+    manufacture_date: str | None = None
 
     @field_validator("manufacture_date")
     def validate_manufacture_date(cls, v):
@@ -212,10 +213,10 @@ class DeviceInfoData(BaseModel):
 
 
 class DeploymentData(BaseModel):
-    deployment_type: Optional[str] = None
-    installation_date: Optional[str] = None
-    height_meters: Optional[Union[int, float]] = None
-    orientation_degrees: Optional[Union[int, float]] = None
+    deployment_type: str | None = None
+    installation_date: str | None = None
+    height_meters: int | float | None = None
+    orientation_degrees: int | float | None = None
 
     @field_validator("installation_date")
     def validate_installation_date(cls, v):
@@ -234,10 +235,10 @@ class DeploymentData(BaseModel):
 
 
 class MetadataData(BaseModel):
-    instance_id: Optional[str] = None
-    identity_generation_timestamp: Optional[str] = None
-    generation_seed: Optional[Union[int, str]] = None
-    sensor_type: Optional[str] = None
+    instance_id: str | None = None
+    identity_generation_timestamp: str | None = None
+    generation_seed: int | str | None = None
+    sensor_type: str | None = None
 
     @field_validator("identity_generation_timestamp")
     def validate_timestamp(cls, v):
@@ -250,17 +251,17 @@ class MetadataData(BaseModel):
 
 
 class IdentityData(BaseModel):
-    sensor_id: Optional[str] = None
-    location: Optional[Union[str, LocationData]] = None
-    device_info: Optional[DeviceInfoData] = None
-    deployment: Optional[DeploymentData] = None
-    metadata: Optional[MetadataData] = None
+    sensor_id: str | None = None
+    location: str | LocationData | None = None
+    device_info: DeviceInfoData | None = None
+    deployment: DeploymentData | None = None
+    metadata: MetadataData | None = None
 
 
-def load_config(config_path: str) -> Dict:
+def load_config(config_path: str) -> dict:
     """Load configuration from YAML file and validate its structure."""
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             raw_config_data = yaml.safe_load(f)
         if not isinstance(raw_config_data, dict):
             logging.error(f"Config file {config_path} content must be a dictionary.")
@@ -290,14 +291,14 @@ def load_config(config_path: str) -> Dict:
         logging.error(f"Invalid configuration in {config_path}:\n{e}")
         raise ValueError(f"Invalid configuration: {e}")
     except Exception as e:
-        logging.error(f"Error loading configuration file {config_path}: {str(e)}")
+        logging.error(f"Error loading configuration file {config_path}: {e!s}")
         raise
 
 
-def load_identity(identity_path: str) -> Dict:
+def load_identity(identity_path: str) -> dict:
     """Load sensor identity from JSON file and validate its structure using Pydantic."""
     try:
-        with open(identity_path, "r") as f:
+        with open(identity_path) as f:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
             logging.error(f"Identity file {identity_path} content must be a dictionary.")
@@ -321,7 +322,7 @@ def load_identity(identity_path: str) -> Dict:
         raise
 
 
-def generate_sensor_id(identity: Dict) -> str:
+def generate_sensor_id(identity: dict) -> str:
     """Generate a new sensor ID in the format CITY_XXXXXX."""
     # Handle both new nested structure and legacy format
     location_str = None
@@ -356,7 +357,7 @@ def generate_sensor_id(identity: Dict) -> str:
     return f"{location_prefix.upper()}_{random_suffix}"
 
 
-def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict:
+def process_identity_and_location(identity_data: dict, app_config: dict) -> dict:
     """
     Processes the identity data, generating or validating location information.
 
@@ -401,8 +402,8 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
 
     # Location must be a non-empty string
     has_location = isinstance(location_value, str) and bool(location_value.strip())
-    has_latitude = isinstance(latitude_value, (int, float))
-    has_longitude = isinstance(longitude_value, (int, float))
+    has_latitude = isinstance(latitude_value, int | float)
+    has_longitude = isinstance(longitude_value, int | float)
 
     all_geo_fields_valid_and_present = has_location and has_latitude and has_longitude
 
@@ -486,13 +487,13 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
     if (
         random_location_enabled
         and gps_variation_meters
-        and isinstance(gps_variation_meters, (int, float))
+        and isinstance(gps_variation_meters, int | float)
         and gps_variation_meters > 0
     ):
         current_lat = working_identity.get("latitude")
         current_lon = working_identity.get("longitude")
 
-        if isinstance(current_lat, (int, float)) and isinstance(current_lon, (int, float)):
+        if isinstance(current_lat, int | float) and isinstance(current_lon, int | float):
             gps_variation_km = gps_variation_meters / 1000.0
             logger.info(
                 f"Applying GPS fuzzing (up to {gps_variation_meters}m / {gps_variation_km:.2f}km) "
@@ -632,13 +633,13 @@ def setup_logging(config):
 
 def file_watcher_thread(
     file_path: str,
-    load_function: Callable[[str], Dict],
+    load_function: Callable[[str], dict],
     config_manager_instance: ConfigManager,
     update_type: str,  # "config" or "identity"
     simulator_instance: SensorSimulator,
     simulator_update_method_name: str,  # "handle_config_updated" or "handle_identity_updated"
     stop_event: threading.Event,
-    check_interval: Union[int, float],
+    check_interval: int | float,
 ):
     """
     Monitors a file for changes and updates the ConfigManager and SensorSimulator.
@@ -787,8 +788,8 @@ def main():
 
     if args.generate_identity:
         # Generate a new format identity template
-        from datetime import datetime
         import uuid
+        from datetime import datetime
 
         template = {
             "sensor_id": "SENSOR_XX_YYY_ZZZZ",

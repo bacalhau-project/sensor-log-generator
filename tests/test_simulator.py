@@ -1,21 +1,15 @@
-import json
 import os
 import sqlite3
 import sys
 import tempfile
-import time
 import unittest
 
 # Add src directory to Python path to allow importing modules from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from src.anomaly import (
-    AnomalyGenerator,  # Assuming AnomalyGenerator is in anomaly.py
-)
 from src.config import (
     ConfigManager,  # Assuming ConfigManager is in config.py
 )
-from src.database import SensorDatabase  # Assuming SensorDatabase is in database.py
 
 # Import Enums if they are in separate files or adjust as needed
 from src.simulator import SensorSimulator
@@ -148,9 +142,7 @@ class TestSensorSimulator(unittest.TestCase):
             get_minimal_identity(
                 location=None, latitude=None, longitude=None
             ),  # Missing city, lat & long
-            get_minimal_identity(
-                location="", latitude=10.0, longitude=20.0
-            ),  # Empty city string
+            get_minimal_identity(location="", latitude=10.0, longitude=20.0),  # Empty city string
         ]
 
         for identity in scenarios:
@@ -164,9 +156,8 @@ class TestSensorSimulator(unittest.TestCase):
                     or "valid models are" in str(context.exception).lower()
                     or "valid versions are" in str(context.exception).lower()
                     or "location is required" in str(context.exception).lower(),
-                    f"Unexpected ValueError message: {str(context.exception)}",
+                    f"Unexpected ValueError message: {context.exception!s}",
                 )
-
 
     def test_simulator_with_anomalies_enabled(self):
         """Test simulator with anomalies enabled."""
@@ -194,45 +185,51 @@ class TestSensorSimulator(unittest.TestCase):
     def test_simulator_with_different_firmware_versions(self):
         """Test simulator with different firmware versions."""
         config = get_minimal_config(self.db_path)
-        
+
         for firmware_version in ["1.4.0", "1.5.0", "2.0.0"]:
             with self.subTest(firmware_version=firmware_version):
                 identity = get_minimal_identity()
                 identity["firmware_version"] = firmware_version
-                
+
                 config_manager = ConfigManager(config=config, identity=identity)
                 simulator = SensorSimulator(config_manager=config_manager)
-                
+
                 # Should initialize without error
                 self.assertEqual(simulator.firmware_version, firmware_version)
 
     def test_simulator_with_different_manufacturers(self):
         """Test simulator with different manufacturers."""
         config = get_minimal_config(self.db_path)
-        
-        for manufacturer in ["SensorTech", "EnvMonitors", "IoTPro", "AcmeSensors", "CustomManufacturer"]:
+
+        for manufacturer in [
+            "SensorTech",
+            "EnvMonitors",
+            "IoTPro",
+            "AcmeSensors",
+            "CustomManufacturer",
+        ]:
             with self.subTest(manufacturer=manufacturer):
                 identity = get_minimal_identity()
                 identity["manufacturer"] = manufacturer
-                
+
                 config_manager = ConfigManager(config=config, identity=identity)
                 simulator = SensorSimulator(config_manager=config_manager)
-                
+
                 # Should initialize without error
                 self.assertEqual(simulator.manufacturer, manufacturer)
 
     def test_simulator_with_different_models(self):
         """Test simulator with different models."""
         config = get_minimal_config(self.db_path)
-        
+
         for model in ["EnvMonitor-3000", "EnvMonitor-4000", "EnvMonitor-5000"]:
             with self.subTest(model=model):
                 identity = get_minimal_identity()
                 identity["model"] = model
-                
+
                 config_manager = ConfigManager(config=config, identity=identity)
                 simulator = SensorSimulator(config_manager=config_manager)
-                
+
                 # Should initialize without error
                 self.assertEqual(simulator.model, model)
 
@@ -245,7 +242,7 @@ class TestSensorSimulator(unittest.TestCase):
 
         config_manager = ConfigManager(config=config, identity=identity)
         simulator = SensorSimulator(config_manager=config_manager)
-        
+
         # Should initialize without error even with monitoring
         self.assertIsNotNone(simulator)
 
@@ -256,9 +253,9 @@ class TestSensorSimulator(unittest.TestCase):
 
         config_manager = ConfigManager(config=config, identity=identity)
         simulator = SensorSimulator(config_manager=config_manager)
-        
+
         status = simulator.get_status()
-        
+
         # Status should be a dictionary with expected keys
         self.assertIsInstance(status, dict)
         self.assertIn("sensor_id", status)
@@ -269,14 +266,14 @@ class TestSensorSimulator(unittest.TestCase):
         """Test simulator with extreme readings per second values."""
         config = get_minimal_config(self.db_path)
         identity = get_minimal_identity()
-        
+
         # Test very high readings per second
         config["simulation"]["readings_per_second"] = 1000
         config["simulation"]["run_time_seconds"] = 0.01  # Very short duration
-        
+
         config_manager = ConfigManager(config=config, identity=identity)
         simulator = SensorSimulator(config_manager=config_manager)
-        
+
         # Should handle high frequency without error
         try:
             simulator.run()

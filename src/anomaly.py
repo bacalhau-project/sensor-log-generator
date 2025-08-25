@@ -3,11 +3,10 @@ import os
 import random
 import re
 import time
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from .enums import AnomalyType, FirmwareVersion, Model, ParameterType
+from .enums import AnomalyType, FirmwareVersion, Manufacturer, Model, ParameterType
 
 logger = logging.getLogger(__name__)
 # Inherit parent logger's level
@@ -38,7 +37,7 @@ class AnomalyGenerator:
 
         # Extract device info based on format
         device_info = identity.get("device_info", {})
-        
+
         # Initialize identity with validation - check nested first, then flat
         firmware_val = device_info.get("firmware_version") or identity.get("firmware_version")
         if not self._is_valid_semver(firmware_val):
@@ -80,16 +79,18 @@ class AnomalyGenerator:
             self.location = location_data
             self.latitude = identity.get("latitude")
             self.longitude = identity.get("longitude")
-            
+
         if not self.location:
             raise ValueError("Location is required in identity configuration")
 
         # Track active anomalies
         self.active_anomalies = {}
         self.start_times = {}
-        
+
         # Debug mode
-        self.debug_mode = os.environ.get('DEBUG_MODE') == 'true' or logger.isEnabledFor(logging.DEBUG)
+        self.debug_mode = os.environ.get("DEBUG_MODE") == "true" or logger.isEnabledFor(
+            logging.DEBUG
+        )
         if self.debug_mode:
             logger.setLevel(logging.DEBUG)
 
@@ -98,22 +99,24 @@ class AnomalyGenerator:
         logger.info(f"  Firmware: {self.firmware_version}")
         logger.info(f"  Model: {self.model}")
         logger.info(f"  Manufacturer: {self.manufacturer}")
-        
+
         if self.debug_mode:
-            logger.debug(f"🔍 Anomaly config: enabled={self.enabled}, probability={self.probability}, types={list(self.types.keys())}")
+            logger.debug(
+                f"🔍 Anomaly config: enabled={self.enabled}, probability={self.probability}, types={list(self.types.keys())}"
+            )
 
     def _is_valid_semver(self, version: str) -> bool:
         """Validate if a string is a valid semantic version.
-        
+
         Args:
             version: Version string to validate
-            
+
         Returns:
             True if valid SemVer, False otherwise
         """
         # SemVer regex pattern
         # Matches: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
-        semver_pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+        semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
         return bool(re.match(semver_pattern, version))
 
     def should_generate_anomaly(self):
@@ -126,9 +129,9 @@ class AnomalyGenerator:
 
         # Handle both enum and string firmware versions
         fw_version = self.firmware_version
-        if hasattr(fw_version, 'value'):
+        if hasattr(fw_version, "value"):
             fw_version = fw_version.value
-            
+
         # Firmware 1.4 has higher anomaly probability
         if fw_version in ["1.4", "1.4.0"]:
             adjusted_probability *= 1.5  # 50% more anomalies
@@ -138,10 +141,12 @@ class AnomalyGenerator:
             adjusted_probability *= 0.7  # 30% fewer anomalies
 
         should_generate = random.random() < adjusted_probability
-        
+
         if self.debug_mode and should_generate:
-            logger.debug(f"🎲 Anomaly generation triggered (probability: {adjusted_probability:.3f})")
-        
+            logger.debug(
+                f"🎲 Anomaly generation triggered (probability: {adjusted_probability:.3f})"
+            )
+
         return should_generate
 
     def select_anomaly_type(self):
@@ -196,7 +201,7 @@ class AnomalyGenerator:
                 return anomaly_type
 
         # Fallback
-        return list(enabled_types.keys())[0]
+        return next(iter(enabled_types.keys()))
 
     def start_anomaly(self, anomaly_type):
         """Start an anomaly of the specified type."""
@@ -209,10 +214,7 @@ class AnomalyGenerator:
 
     def is_anomaly_active(self, anomaly_type):
         """Check if an anomaly is currently active."""
-        if (
-            anomaly_type not in self.active_anomalies
-            or not self.active_anomalies[anomaly_type]
-        ):
+        if anomaly_type not in self.active_anomalies or not self.active_anomalies[anomaly_type]:
             return False
 
         # Check if the anomaly duration has expired
@@ -266,24 +268,24 @@ class AnomalyGenerator:
         # Get the normal parameters for this metric to calculate proper spike
         normal_params = self.config.get("normal_parameters", {}).get(param.value, {})
         current_value = reading[param.value]
-        
+
         if "mean" in normal_params and "std_dev" in normal_params:
             mean = normal_params["mean"]
             std_dev = normal_params["std_dev"]
-            
+
             # Generate spike 2-3 standard deviations away from mean
             # For firmware 1.4, spikes are more severe
             if self.firmware_version == FirmwareVersion.V1_4:
                 spike_magnitude = random.uniform(2.5, 3.5) * std_dev
             else:
                 spike_magnitude = random.uniform(2.0, 3.0) * std_dev
-            
+
             # 50% chance of positive or negative spike
             if random.random() < 0.5:
                 spike_value = mean + spike_magnitude
             else:
                 spike_value = mean - spike_magnitude
-                
+
             # Ensure the spike stays within sensor physical limits if defined
             min_val = normal_params.get("min", float("-inf"))
             max_val = normal_params.get("max", float("inf"))
@@ -294,12 +296,12 @@ class AnomalyGenerator:
                 spike_factor = random.uniform(1.8, 3.5)
             else:
                 spike_factor = random.uniform(1.5, 3.0)
-            
+
             if random.random() < 0.5:  # 50% chance of negative spike
                 spike_factor = 1 / spike_factor
-                
+
             spike_value = current_value * spike_factor
-        
+
         modified[param.value] = spike_value
 
         return modified, True, AnomalyType.SPIKE
@@ -319,9 +321,7 @@ class AnomalyGenerator:
 
         # Calculate how far into the anomaly we are (0 to 1)
         start_time = self.start_times.get(AnomalyType.TREND, time.time())
-        duration = self.types.get(AnomalyType.TREND.value, {}).get(
-            "duration_seconds", 300
-        )
+        duration = self.types.get(AnomalyType.TREND.value, {}).get("duration_seconds", 300)
         progress = min(1.0, (time.time() - start_time) / duration)
 
         # Apply a gradual trend (up to 50% increase/decrease)
@@ -343,14 +343,14 @@ class AnomalyGenerator:
         elapsed = time.time() - start_time
 
         # Apply a sinusoidal pattern to temperature
-        modified[ParameterType.TEMPERATURE.value] = reading[
-            ParameterType.TEMPERATURE.value
-        ] * (1 + 0.2 * np.sin(elapsed / 10))
+        modified[ParameterType.TEMPERATURE.value] = reading[ParameterType.TEMPERATURE.value] * (
+            1 + 0.2 * np.sin(elapsed / 10)
+        )
 
         # Apply an opposite pattern to humidity
-        modified[ParameterType.HUMIDITY.value] = reading[
-            ParameterType.HUMIDITY.value
-        ] * (1 + 0.2 * np.sin(elapsed / 10 + np.pi))
+        modified[ParameterType.HUMIDITY.value] = reading[ParameterType.HUMIDITY.value] * (
+            1 + 0.2 * np.sin(elapsed / 10 + np.pi)
+        )
 
         return modified, True, AnomalyType.PATTERN
 
@@ -378,23 +378,20 @@ class AnomalyGenerator:
                 noise_factor = 0.1  # 10% of the value as noise
 
             # VibrationPlus sensors have more vibration noise
-            if (
-                param == ParameterType.HUMIDITY
-                and self.manufacturer == "EnvMonitors"
-            ):
+            if param == ParameterType.HUMIDITY and self.manufacturer == "EnvMonitors":
                 noise_factor *= 1.5
 
             noise = np.random.normal(0, base_value * noise_factor)
             modified[param.value] = base_value + noise
 
         return modified, True, AnomalyType.NOISE
-    
+
     def update_identity(self, new_identity):
         """Update the identity configuration when it changes.
-        
+
         Args:
             new_identity: New identity configuration
-            
+
         Raises:
             ValueError: If any of the identity values are invalid
         """
@@ -405,7 +402,7 @@ class AnomalyGenerator:
 
         # Extract device info based on format
         device_info = new_identity.get("device_info", {})
-        
+
         # Update firmware version
         firmware_val = device_info.get("firmware_version") or new_identity.get("firmware_version")
         try:
@@ -413,8 +410,7 @@ class AnomalyGenerator:
         except ValueError:
             valid_versions = [v.value for v in FirmwareVersion]
             raise ValueError(
-                f"Invalid firmware version: {firmware_val}. "
-                f"Valid versions are: {valid_versions}"
+                f"Invalid firmware version: {firmware_val}. Valid versions are: {valid_versions}"
             )
 
         # Update model
@@ -423,10 +419,7 @@ class AnomalyGenerator:
             self.model = Model(model_val)
         except ValueError:
             valid_models = [m.value for m in Model]
-            raise ValueError(
-                f"Invalid model: {model_val}. "
-                f"Valid models are: {valid_models}"
-            )
+            raise ValueError(f"Invalid model: {model_val}. Valid models are: {valid_models}")
 
         # Update manufacturer
         manufacturer_val = device_info.get("manufacturer") or new_identity.get("manufacturer")
@@ -434,7 +427,7 @@ class AnomalyGenerator:
             self.manufacturer = manufacturer_val
             raise ValueError(
                 f"Invalid manufacturer: {manufacturer_val}. "
-                f"Valid manufacturers are: {valid_manufacturers}"
+                f"Valid manufacturers are: {', '.join([m.value for m in Manufacturer])}"
             )
 
         # Update location data based on format
@@ -450,8 +443,8 @@ class AnomalyGenerator:
             self.location = location_data
             self.latitude = new_identity.get("latitude")
             self.longitude = new_identity.get("longitude")
-            
+
         if not self.location:
             raise ValueError("Location is required in identity configuration")
-        
+
         logger.info(f"Updated anomaly generator identity for sensor: {self.id}")

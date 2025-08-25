@@ -2,15 +2,13 @@
 Generate LLM-ready documentation for the sensor simulator.
 """
 
-import json
 from pathlib import Path
-from typing import Dict, Any
 
 
 def generate_llm_documentation() -> str:
     """
     Generate comprehensive LLM documentation for the sensor simulator.
-    
+
     Returns:
         str: Complete LLM-ready documentation as a formatted string
     """
@@ -444,7 +442,7 @@ This sensor simulator provides enterprise-grade industrial sensor data generatio
 def save_llm_documentation(output_path: str = "llm_docs.txt") -> None:
     """
     Save the LLM documentation to a file.
-    
+
     Args:
         output_path: Path where the documentation should be saved
     """

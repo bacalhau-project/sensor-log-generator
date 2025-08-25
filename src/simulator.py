@@ -5,8 +5,7 @@ import re
 import sys
 import threading
 import time
-from datetime import datetime, timezone
-from typing import Dict
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
@@ -70,7 +69,7 @@ class SensorSimulator:
                 f"SensorSimulator initialized with IANA timezone: '{self.timezone}' (Offset: '{self.timezone_offset_str}')"
             )
         except ZoneInfoNotFoundError:  # Catch if IANA name is invalid
-            logger.error(
+            logger.exception(
                 f"Invalid IANA timezone name provided in identity: '{self.timezone}'. Exiting."
             )
             sys.exit(1)
@@ -113,7 +112,7 @@ class SensorSimulator:
         try:
             self._validate_sensor_config()
         except ValueError as e:
-            logger.error(str(e))
+            logger.exception(str(e))
             raise
 
         # Generate and store the location once at initialization (validates and logs)
@@ -180,7 +179,7 @@ class SensorSimulator:
 
             logger.info("Sensor simulator initialized successfully")
         except Exception as e:
-            logger.error(f"Error initializing simulator: {str(e)}")
+            logger.exception(f"Error initializing simulator: {e!s}")
             raise
 
     def _validate_sensor_config(self):
@@ -255,7 +254,7 @@ class SensorSimulator:
             }
             return reading
         except Exception as e:
-            logger.error(f"Error generating normal reading: {e}")
+            logger.exception(f"Error generating normal reading: {e}")
             # Return a fallback reading with default values
             return {
                 "sensor_id": self.sensor_id,
@@ -285,7 +284,7 @@ class SensorSimulator:
             value = random.gauss(mean, std_dev)
 
             # Seasonal variation based on hour of the day (UTC)
-            hour = datetime.now(timezone.utc).hour
+            hour = datetime.now(UTC).hour
             seasonal_factor = (
                 np.sin(2 * np.pi * (hour - 6) / 24) * std_dev * 0.1
             )  # Peak around midday
@@ -296,7 +295,7 @@ class SensorSimulator:
 
             return value
         except Exception as e:
-            logger.error(f"Error generating value for {param_name}: {e}")
+            logger.exception(f"Error generating value for {param_name}: {e}")
             # Return mean value as fallback
             return self.normal_params.get(param_name, {}).get("mean", 0)
 
@@ -311,7 +310,7 @@ class SensorSimulator:
             memory_info = self.process.memory_info()
             return memory_info.rss / (1024 * 1024)
         except Exception as e:
-            logger.error(f"Error getting memory usage: {e}")
+            logger.exception(f"Error getting memory usage: {e}")
             return 0
 
     def _check_memory_usage(self):
@@ -351,7 +350,7 @@ class SensorSimulator:
 
             return self.memory_usage
         except Exception as e:
-            logger.error(f"Error checking memory usage: {e}")
+            logger.exception(f"Error checking memory usage: {e}")
             return self.memory_usage
 
     def handle_config_updated(self):
@@ -448,7 +447,7 @@ class SensorSimulator:
                         f"IANA Timezone updated via handle_identity_updated to: '{self.timezone}' (New Offset: '{self.timezone_offset_str}')"
                     )
                 except ZoneInfoNotFoundError:
-                    logger.error(
+                    logger.exception(
                         f"Invalid IANA timezone name provided in updated identity: '{self.timezone}'. Using previous offset: '{self.timezone_offset_str}'."
                     )
                     # Optionally, revert self.timezone to old_iana_timezone or handle error more gracefully
@@ -464,9 +463,9 @@ class SensorSimulator:
             else:
                 logger.debug("Identity checked, no changes detected.")
         except Exception as e:
-            logger.error(f"Error handling identity update: {e}")
+            logger.exception(f"Error handling identity update: {e}")
 
-    def process_reading(self, reading: Dict) -> bool:
+    def process_reading(self, reading: dict) -> bool:
         """Process a single reading.
 
         Args:
@@ -482,14 +481,14 @@ class SensorSimulator:
 
             # Add anomaly information
             anomaly_flag = reading.get("anomaly_flag", False)
-            anomaly_type = reading.get("anomaly_type", None)
+            anomaly_type = reading.get("anomaly_type")
 
             # Get the current timestamp and the IANA timezone from the simulator's identity
             current_timestamp_unix = time.time()
             # Convert Unix timestamp to ISO 8601 format for Pydantic model
-            iso_timestamp = datetime.fromtimestamp(
-                current_timestamp_unix, tz=timezone.utc
-            ).isoformat(timespec="milliseconds")
+            iso_timestamp = datetime.fromtimestamp(current_timestamp_unix, tz=UTC).isoformat(
+                timespec="milliseconds"
+            )
 
             # Extract device info and other metadata based on identity format
             device_info = self.identity.get("device_info", {})
@@ -531,7 +530,7 @@ class SensorSimulator:
             try:
                 sensor_reading_instance = SensorReadingSchema(**reading_data_for_schema)
             except ValidationError as ve:
-                logger.error(f"Pydantic validation error while processing reading: {ve}")
+                logger.exception(f"Pydantic validation error while processing reading: {ve}")
                 # Optionally, handle this error more gracefully, e.g., by storing
                 # the raw data in a separate "error" table or logging more details.
                 self.error_count += 1
@@ -575,17 +574,19 @@ class SensorSimulator:
                     retry_count = self.database.failure_retry_count
                     if retry_count >= len(self.database.failure_buffer_retry_intervals):
                         # We've hit the 15-second threshold
-                        logger.error(f"DISK I/O ERROR persists after {retry_count} retry attempts")
+                        logger.exception(
+                            f"DISK I/O ERROR persists after {retry_count} retry attempts"
+                        )
                     else:
                         # Still in early retry phase, don't spam errors
                         logger.debug(f"Disk I/O error, retry #{retry_count + 1} pending")
                 else:
                     logger.debug("Disk I/O error detected, will retry")
             elif "database is locked" in error_msg:
-                logger.error("DATABASE LOCKED - another process may be holding a write lock")
+                logger.exception("DATABASE LOCKED - another process may be holding a write lock")
             elif "malformed" in error_msg or "corrupt" in error_msg:
                 # Try to handle corruption gracefully
-                logger.error("DATABASE CORRUPTION detected")
+                logger.exception("DATABASE CORRUPTION detected")
 
                 # If this is the first corruption error, try to recover
                 if not hasattr(self, "_corruption_recovery_attempted"):
@@ -628,7 +629,7 @@ class SensorSimulator:
                         return True
 
                     except Exception as recovery_error:
-                        logger.error(f"Failed to recover from corruption: {recovery_error}")
+                        logger.exception(f"Failed to recover from corruption: {recovery_error}")
                         logger.critical("DATABASE CORRUPTION - unable to recover, stopping")
                         return False
                 else:
@@ -674,7 +675,7 @@ class SensorSimulator:
                     db_count = db_stats.get("total_readings", 0)
                     db_size = db_stats.get("database_size_mb", 0)
                     unsynced = db_stats.get("unsynced_readings", 0)
-                except:
+                except Exception:
                     db_count = "?"
                     db_size = "?"
                     unsynced = "?"
@@ -779,7 +780,7 @@ class SensorSimulator:
                         )
                 except Exception as e:
                     logger.error(f"Failed to generate reading: {e}", exc_info=True)
-                    logger.error("Cannot continue without ability to generate readings")
+                    logger.exception("Cannot continue without ability to generate readings")
                     break
 
                 if not self.process_reading(reading):
@@ -832,7 +833,7 @@ class SensorSimulator:
                     )
                     logger.error(f"Only ran for {elapsed:.1f}s out of {self.run_time_seconds}s")
                 else:
-                    logger.info(f"Sensor stopped early")
+                    logger.info("Sensor stopped early")
                     logger.warning(f"Only ran for {elapsed:.1f}s out of {self.run_time_seconds}s")
                     logger.warning(f"Generated {self.readings_count} readings before stopping")
             # Stop the monitoring server if it's running
@@ -876,7 +877,7 @@ class SensorSimulator:
                     # The database close() method will handle the final checkpoint
                     pass  # Database close is handled in the finally block of run()
                 except Exception as e:
-                    logger.error(f"Error during database checkpoint: {e}")
+                    logger.exception(f"Error during database checkpoint: {e}")
 
     def get_status(self):
         """Get the current status of the simulator.
@@ -921,7 +922,7 @@ class SensorSimulator:
             else False,
         }
 
-    def generate_reading(self, sensor_id: str) -> Dict:
+    def generate_reading(self, sensor_id: str) -> dict:
         """Generate a single sensor reading.
 
         Args:
@@ -971,7 +972,7 @@ class SensorSimulator:
 
         return reading
 
-    def _generate_normal_value(self, params: Dict) -> float:
+    def _generate_normal_value(self, params: dict) -> float:
         """Generate a sensor value with realistic variations based on normal distribution.
 
         Args:
@@ -1039,15 +1040,15 @@ class SensorSimulator:
         if not (
             isinstance(self.city_name, str)
             and self.city_name.strip()
-            and isinstance(self.latitude, (int, float))
-            and isinstance(self.longitude, (int, float))
+            and isinstance(self.latitude, int | float)
+            and isinstance(self.longitude, int | float)
         ):
             missing_fields = []
             if not (isinstance(self.city_name, str) and self.city_name.strip()):
                 missing_fields.append("'location' (non-empty string)")
-            if not isinstance(self.latitude, (int, float)):
+            if not isinstance(self.latitude, int | float):
                 missing_fields.append("'latitude' (number)")
-            if not isinstance(self.longitude, (int, float)):
+            if not isinstance(self.longitude, int | float):
                 missing_fields.append("'longitude' (number)")
 
             error_msg = (
@@ -1100,7 +1101,7 @@ class SensorSimulator:
         try:
             # Create a datetime object from the Unix timestamp, making it timezone-aware (UTC)
             # then convert to the target timezone to get the correct offset for that moment.
-            dt_utc = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc)
+            dt_utc = datetime.fromtimestamp(unix_timestamp, tz=UTC)
             target_tz = ZoneInfo(iana_timezone_name)
             dt_target = dt_utc.astimezone(target_tz)
 
@@ -1122,7 +1123,7 @@ class SensorSimulator:
             )
             return "+00:00"
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Error calculating offset for timezone '{iana_timezone_name}': {e}. Defaulting to +00:00."
             )
             return "+00:00"
