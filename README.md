@@ -97,6 +97,13 @@ sensor:
 
 ## 🚀 Quick Start
 
+When starting the simulator, you'll see the database mode in the startup logs:
+```
+INFO - Using sensor ID: TEST001
+INFO - Sensor Location: New York  
+INFO - Database mode: WAL (change with SENSOR_WAL env var)
+```
+
 ### Prerequisites
 - Docker (recommended) or Python 3.11+ with uv
 - SQLite3 (for data analysis)
@@ -201,7 +208,7 @@ Configure the simulator through environment variables:
 | `ANOMALY_PROBABILITY` | Chance of anomalies (0-1) | 0.05 |
 | `LOG_LEVEL` | Logging verbosity (DEBUG/INFO/WARNING/ERROR) | INFO |
 | `PRESERVE_EXISTING_DB` | Keep existing database on startup | false |
-| `SENSOR_WAL` | Enable SQLite WAL mode for better concurrency | false |
+| `SENSOR_WAL` | SQLite journal mode (true=WAL, false=DELETE) | true |
 | `MONITORING_ENABLED` | Enable web monitoring dashboard | false |
 | `MONITORING_PORT` | Dashboard port number | 8080 |
 | `CONFIG_FILE` | Path to configuration YAML | config.yaml |
@@ -341,35 +348,36 @@ monitoring:
 
 The simulator supports two SQLite journal modes:
 
-**DELETE Mode (Default)**
+**WAL Mode (Write-Ahead Logging) - Default**
+- ✅ Better concurrent read/write performance
+- ✅ Allows multiple readers while writing
+- ✅ **Works great on Linux** (including Docker on Linux)
+- ⚠️ **May have issues on Mac/Windows** with Docker Desktop - see [DOCKER_WAL_MODE.md](DOCKER_WAL_MODE.md)
+- Use when: Running on Linux or native execution
+
+**DELETE Mode**
 - ✅ Universal compatibility (works everywhere)
 - ✅ Works with Docker Desktop on Mac/Windows
 - ✅ Simple file management
-- Use when: Maximum compatibility is needed
+- Use when: Docker Desktop on Mac/Windows or maximum compatibility needed
 
-**WAL Mode (Write-Ahead Logging)**
-- ✅ **Works great on Linux** (including Docker on Linux)
-- ⚠️ **Issues on Mac/Windows** with Docker Desktop - see [DOCKER_WAL_MODE.md](DOCKER_WAL_MODE.md)
-- Better concurrent read/write performance
-- Allows multiple readers while writing
-- Use when: Running on Linux with multiple readers
-
-Enable WAL mode with the `SENSOR_WAL` environment variable:
+Control the mode with the `SENSOR_WAL` environment variable:
 ```bash
-# On Linux (works great)
-export SENSOR_WAL=true
+# Default (WAL mode)
+uv run main.py  # Uses WAL mode
+docker run -v $(pwd)/data:/app/data sensor-simulator  # Uses WAL mode
+
+# Explicitly disable WAL (use DELETE mode)
+export SENSOR_WAL=false
 uv run main.py
 
-# Docker on Linux (works great)
-docker run -e SENSOR_WAL=true -v $(pwd)/data:/app/data sensor-simulator
-
-# Docker Desktop on Mac/Windows (use DELETE mode)
-docker run -v $(pwd)/data:/app/data sensor-simulator  # Don't set SENSOR_WAL
+# Docker Desktop on Mac/Windows (should use DELETE mode)
+docker run -e SENSOR_WAL=false -v $(pwd)/data:/app/data sensor-simulator
 ```
 
 **Platform Notes**: 
-- **Linux**: Both modes work well. Use WAL for better concurrency.
-- **Mac/Windows (Docker Desktop)**: Use DELETE mode (default) due to file sharing limitations.
+- **Linux**: WAL mode (default) works great
+- **Mac/Windows (Docker Desktop)**: Set `SENSOR_WAL=false` for DELETE mode
 
 ### Manufacturer and Firmware Effects
 

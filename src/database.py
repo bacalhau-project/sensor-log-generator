@@ -149,14 +149,21 @@ class DatabaseConnectionManager:
         self._last_checkpoint_time = time.time()
         self._checkpoint_interval = 5  # Checkpoint/commit every 5 seconds for external visibility
 
-        # Check if WAL mode is enabled via environment variable
-        use_wal_mode = os.environ.get("SENSOR_WAL", "").lower() in ("true", "1", "yes", "on")
+        # Check if DELETE mode is explicitly requested via environment variable
+        # Default is WAL mode for better performance
+        use_delete_mode = os.environ.get("SENSOR_WAL", "true").lower() in (
+            "false",
+            "0",
+            "no",
+            "off",
+            "delete",
+        )
 
-        # Standard SQLite pragmas for container environments
-        # Using DELETE mode for cross-boundary compatibility (container/host access)
-        # But with optimized settings to prevent disk I/O errors
-        # Can be overridden to WAL mode via SENSOR_WAL environment variable
-        journal_mode = "WAL" if use_wal_mode else "DELETE"
+        # Default to WAL mode unless explicitly disabled
+        journal_mode = "DELETE" if use_delete_mode else "WAL"
+
+        # Log the mode being used
+        self.logger.info(f"Database using {journal_mode} journal mode")
 
         self.pragmas = [
             f"PRAGMA journal_mode={journal_mode};",  # Configurable journal mode
@@ -169,7 +176,7 @@ class DatabaseConnectionManager:
             "PRAGMA locking_mode=NORMAL;",  # Ensure proper locking
         ]
 
-        if use_wal_mode:
+        if journal_mode == "WAL":
             # Add WAL-specific pragmas for better performance
             self.pragmas.extend(
                 [
@@ -177,7 +184,6 @@ class DatabaseConnectionManager:
                     "PRAGMA wal_checkpoint(TRUNCATE);",  # Initial checkpoint
                 ]
             )
-            self.logger.info("WAL mode enabled via SENSOR_WAL environment variable")
 
     def _get_thread_connection(self) -> sqlite3.Connection:
         """Get or create a thread-local database connection.

@@ -1,0 +1,16 @@
+{
+  "sensor_id": "TEST001",
+  "location": {
+    "city": "New York",
+    "coordinates": {
+      "latitude": 40.7128,
+      "longitude": -74.006
+    },
+    "timezone": "America/New_York"
+  },
+  "device_info": {
+    "manufacturer": "SensorTech",
+    "model": "TempSensor Pro",
+    "firmware_version": "1.2.0"
+  }
+}

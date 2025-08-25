@@ -28,27 +28,30 @@ from src.llm_docs import print_llm_documentation, save_llm_documentation
 
 # === Configuration Models (Simplified and Organized) ===
 
+
 class ParameterRange(BaseModel):
     """Reusable model for parameter ranges."""
+
     min_val: Union[int, float] = Field(alias="min")
     max_val: Union[int, float] = Field(alias="max")
 
 
 class DatabaseConfig(BaseModel):
     """Database configuration settings."""
+
     path: str
     backup_enabled: bool
     backup_interval_seconds: Union[int, float]
     max_backup_size_mb: Union[int, float]
     compression_enabled: bool
-    
-    @field_validator('backup_interval_seconds')
+
+    @field_validator("backup_interval_seconds")
     def validate_backup_interval(cls, v):
         if v < 60:
             raise ValueError("backup_interval_seconds must be at least 60")
         return v
-    
-    @field_validator('max_backup_size_mb')
+
+    @field_validator("max_backup_size_mb")
     def validate_max_backup_size(cls, v):
         if v <= 0:
             raise ValueError("max_backup_size_mb must be positive")
@@ -57,32 +60,33 @@ class DatabaseConfig(BaseModel):
 
 class SimulationSettings(BaseModel):
     """Simulation and runtime settings."""
+
     interval_seconds: Union[int, float]
     replicas_count: Optional[int] = 1
-    
+
     # Location randomization
     random_location_enabled: bool = False
     latitude_range: Optional[List[Union[int, float]]] = None
     longitude_range: Optional[List[Union[int, float]]] = None
     location_update_interval: Optional[Union[int, float]] = None
-    
+
     # Dynamic reloading
     dynamic_reload_enabled: bool = False
     reload_check_interval: Union[int, float] = 5
-    
-    @field_validator('interval_seconds')
+
+    @field_validator("interval_seconds")
     def validate_interval(cls, v):
         if v <= 0:
             raise ValueError("interval_seconds must be positive")
         return v
-    
-    @field_validator('replicas_count')
+
+    @field_validator("replicas_count")
     def validate_replicas(cls, v):
         if v is not None and v < 1:
             raise ValueError("replicas_count must be at least 1")
         return v
-    
-    @field_validator('latitude_range')
+
+    @field_validator("latitude_range")
     def validate_latitude(cls, v):
         if v is not None:
             if len(v) != 2:
@@ -90,8 +94,8 @@ class SimulationSettings(BaseModel):
             if not (-90 <= v[0] <= v[1] <= 90):
                 raise ValueError("latitude_range must be within [-90, 90]")
         return v
-    
-    @field_validator('longitude_range')
+
+    @field_validator("longitude_range")
     def validate_longitude(cls, v):
         if v is not None:
             if len(v) != 2:
@@ -103,13 +107,14 @@ class SimulationSettings(BaseModel):
 
 class SensorParameters(BaseModel):
     """Sensor parameter configuration including normal ranges and anomalies."""
+
     # Normal parameter ranges
     temperature: ParameterRange
     vibration: ParameterRange
     humidity: ParameterRange
     pressure: ParameterRange
     voltage: ParameterRange
-    
+
     # Anomaly settings
     anomalies_enabled: bool = False
     anomaly_probability: Union[int, float] = 0.1
@@ -118,125 +123,51 @@ class SensorParameters(BaseModel):
 
 class AppConfig(BaseModel):
     """Main application configuration."""
-    version: Optional[int] = 1
-    
+
     # Core configurations
     database: DatabaseConfig
     simulation: SimulationSettings
     parameters: SensorParameters
-    
+
     # Logging
     log_level: str = "INFO"
     log_file: str = "logs/sensor.log"
-    
-    # Monitoring
-    monitoring_enabled: bool = False
+
+    # Monitoring (required)
+    monitoring_enabled: bool = True
     monitoring_host: str = "0.0.0.0"
     monitoring_port: int = 8080
-    
-    # Legacy/flexible fields
+
+    # Sensor config
     sensor: Optional[Dict[str, Any]] = None
-    
+
     model_config = {"extra": "forbid"}
-    
-    @field_validator('log_level')
+
+    @field_validator("log_level")
     def validate_log_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"log level must be one of {valid_levels}")
         return v.upper()
-    
-    @model_validator(mode='after')
-    def validate_version_requirements(self):
-        """Validate version-specific requirements."""
-        if self.version >= 2:
-            if not self.monitoring_enabled:
-                logging.warning(f"Config version {self.version} expects monitoring to be enabled")
-        return self
 
 
-# Helper function to convert old config format to new format
-def migrate_config_format(raw_config: Dict) -> Dict:
-    """Migrate old config format to simplified format."""
-    # Handle database config migration
-    db_config = raw_config.get("database", {})
-    if "backup_interval_hours" in db_config:
-        db_config["backup_interval_seconds"] = db_config.pop("backup_interval_hours", 24) * 3600
-    if "max_backup_size_mb" not in db_config:
-        db_config["max_backup_size_mb"] = 100  # Default 100MB
-    if "compression_enabled" not in db_config:
-        db_config["compression_enabled"] = False  # Default no compression
-        
-    migrated = {
-        "version": raw_config.get("version", 1),
-        "database": db_config,
-        "log_level": raw_config.get("logging", {}).get("level", "INFO"),
-        "log_file": raw_config.get("logging", {}).get("file", "logs/sensor.log"),
-    }
-    
-    # Migrate simulation settings
-    sim_settings = {}
-    if "simulation" in raw_config:
-        # Keep readings_per_second if present (don't convert to interval_seconds)
-        if "readings_per_second" in raw_config["simulation"]:
-            sim_settings["interval_seconds"] = 1.0 / raw_config["simulation"]["readings_per_second"]
-        else:
-            sim_settings["interval_seconds"] = raw_config["simulation"].get("interval_seconds", 1)
-    if "replicas" in raw_config:
-        sim_settings["replicas_count"] = raw_config["replicas"].get("count", 1)
-    
-    # Migrate random location
-    if "random_location" in raw_config:
-        rl = raw_config["random_location"]
-        sim_settings["random_location_enabled"] = rl.get("enabled", False)
-        sim_settings["latitude_range"] = rl.get("latitude_range")
-        sim_settings["longitude_range"] = rl.get("longitude_range")
-        sim_settings["location_update_interval"] = rl.get("update_interval_seconds")
-    
-    # Migrate dynamic reloading
-    if "dynamic_reloading" in raw_config:
-        dr = raw_config["dynamic_reloading"]
-        sim_settings["dynamic_reload_enabled"] = dr.get("enabled", False)
-        sim_settings["reload_check_interval"] = dr.get("check_interval_seconds", 5)
-    
-    migrated["simulation"] = sim_settings
-    
-    # Migrate parameters
-    params = {}
-    if "normal_parameters" in raw_config:
-        params.update(raw_config["normal_parameters"])
-    if "anomalies" in raw_config:
-        an = raw_config["anomalies"]
-        params["anomalies_enabled"] = an.get("enabled", False)
-        params["anomaly_probability"] = an.get("probability", 0.1)
-        params["anomaly_types"] = an.get("types")
-    
-    # Set default parameters if not provided
-    if "temperature" not in params:
-        params["temperature"] = {"min": 20, "max": 30}
-    if "humidity" not in params:
-        params["humidity"] = {"min": 30, "max": 70}
-    if "pressure" not in params:
-        params["pressure"] = {"min": 1000, "max": 1020}
-    if "vibration" not in params:
-        params["vibration"] = {"min": 0, "max": 10}
-    if "voltage" not in params:
-        params["voltage"] = {"min": 3.2, "max": 3.4}
-        
-    migrated["parameters"] = params
-    
-    # Migrate monitoring
-    if "monitoring" in raw_config:
-        mon = raw_config["monitoring"]
-        migrated["monitoring_enabled"] = mon.get("enabled", False)
-        migrated["monitoring_host"] = mon.get("host", "0.0.0.0")
-        migrated["monitoring_port"] = mon.get("port", 8080)
-    
-    # Keep sensor settings as-is
-    if "sensor" in raw_config:
-        migrated["sensor"] = raw_config["sensor"]
-    
-    return migrated
+def process_config(raw_config: Dict) -> Dict:
+    """Process configuration into expected format."""
+    # Simply return the config with defaults for monitoring
+    config = raw_config.copy()
+
+    # Ensure monitoring is enabled (required for dynamic reloading)
+    config.setdefault("monitoring", {})
+    config["monitoring"]["enabled"] = True
+    config["monitoring"].setdefault("host", "0.0.0.0")
+    config["monitoring"].setdefault("port", 8080)
+
+    # Ensure dynamic reloading is enabled
+    config.setdefault("dynamic_reloading", {})
+    config["dynamic_reloading"]["enabled"] = True
+    config["dynamic_reloading"].setdefault("check_interval_seconds", 5)
+
+    return config
 
 
 # Pydantic Models for Identity (node_identity.json)
@@ -247,13 +178,13 @@ class LocationData(BaseModel):
     timezone: Optional[str] = None
     address: Optional[str] = None
 
-    @field_validator('coordinates')
+    @field_validator("coordinates")
     def validate_coordinates(cls, v):
         if v is not None:
-            if 'latitude' not in v or 'longitude' not in v:
+            if "latitude" not in v or "longitude" not in v:
                 raise ValueError("coordinates must contain 'latitude' and 'longitude'")
-            lat = v['latitude']
-            lon = v['longitude']
+            lat = v["latitude"]
+            lon = v["longitude"]
             if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
                 raise ValueError("latitude and longitude must be numeric")
             if not (-90 <= lat <= 90):
@@ -270,11 +201,11 @@ class DeviceInfoData(BaseModel):
     serial_number: Optional[str] = None
     manufacture_date: Optional[str] = None
 
-    @field_validator('manufacture_date')
+    @field_validator("manufacture_date")
     def validate_manufacture_date(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace('Z', '+00:00'))
+                datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError("manufacture_date must be in ISO format")
         return v
@@ -286,16 +217,16 @@ class DeploymentData(BaseModel):
     height_meters: Optional[Union[int, float]] = None
     orientation_degrees: Optional[Union[int, float]] = None
 
-    @field_validator('installation_date')
+    @field_validator("installation_date")
     def validate_installation_date(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace('Z', '+00:00'))
+                datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError("installation_date must be in ISO format")
         return v
 
-    @field_validator('orientation_degrees')
+    @field_validator("orientation_degrees")
     def validate_orientation(cls, v):
         if v is not None and not (0 <= v <= 360):
             raise ValueError("orientation_degrees must be between 0 and 360")
@@ -308,11 +239,11 @@ class MetadataData(BaseModel):
     generation_seed: Optional[Union[int, str]] = None
     sensor_type: Optional[str] = None
 
-    @field_validator('identity_generation_timestamp')
+    @field_validator("identity_generation_timestamp")
     def validate_timestamp(cls, v):
         if v is not None:
             try:
-                datetime.fromisoformat(v.replace('Z', '+00:00'))
+                datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError("identity_generation_timestamp must be in ISO format")
         return v
@@ -324,44 +255,6 @@ class IdentityData(BaseModel):
     device_info: Optional[DeviceInfoData] = None
     deployment: Optional[DeploymentData] = None
     metadata: Optional[MetadataData] = None
-    
-    # Legacy fields for backward compatibility
-    id: Optional[str] = None
-    latitude: Optional[Union[int, float]] = None
-    longitude: Optional[Union[int, float]] = None
-    timezone: Optional[str] = None
-    manufacturer: Optional[str] = None
-    model: Optional[str] = None
-    firmware_version: Optional[str] = None
-
-    model_config = {"extra": "forbid"}  # Forbid any extra fields
-
-    @model_validator(mode='after')
-    def handle_legacy_fields(self):
-        # If sensor_id is not set but id is, use id
-        if self.sensor_id is None and self.id is not None:
-            self.sensor_id = self.id
-        
-        # If location is a string (legacy), convert it
-        if isinstance(self.location, str):
-            coords = None
-            if self.latitude is not None and self.longitude is not None:
-                coords = {'latitude': self.latitude, 'longitude': self.longitude}
-            self.location = LocationData(
-                city=self.location,
-                coordinates=coords,
-                timezone=self.timezone
-            )
-        
-        # If device_info is not set but legacy fields exist, create it
-        if self.device_info is None and any([self.manufacturer, self.model, self.firmware_version]):
-            self.device_info = DeviceInfoData(
-                manufacturer=self.manufacturer,
-                model=self.model,
-                firmware_version=self.firmware_version
-            )
-        
-        return self
 
 
 def load_config(config_path: str) -> Dict:
@@ -373,81 +266,19 @@ def load_config(config_path: str) -> Dict:
             logging.error(f"Config file {config_path} content must be a dictionary.")
             raise ValueError("Config file content must be a dictionary.")
 
-        # Check if this is old format that needs migration
-        needs_migration = any(key in raw_config_data for key in [
-            "logging", "random_location", "normal_parameters", 
-            "anomalies", "monitoring", "dynamic_reloading", "replicas"
-        ])
-        
-        if needs_migration:
-            logging.info("Migrating old config format to new simplified format")
-            
-            # Store original simulation for later use
-            original_simulation = raw_config_data.get("simulation", {})
-            
-            config_data = migrate_config_format(raw_config_data)
-            
-            # Add defaults for version 1 configs
-            if config_data.get("version", 1) == 1:
-                config_data.setdefault("monitoring_enabled", False)
-                config_data.setdefault("monitoring_host", "0.0.0.0")
-                config_data.setdefault("monitoring_port", 8080)
-        else:
-            config_data = raw_config_data
-            original_simulation = raw_config_data.get("simulation", {})
+        # Process config to ensure required fields
+        config = process_config(raw_config_data)
 
-        # Validate using new Pydantic model
-        app_config = AppConfig(**config_data)
-        
-        # Convert back to dict format expected by rest of code
-        result = app_config.model_dump(by_alias=True)
-        
-        # Restructure to match old format for backward compatibility
-        # But keep original simulation settings
-        restructured = {
-            "version": result["version"],
-            "database": result["database"],
-            "logging": {
-                "level": result["log_level"],
-                "file": result["log_file"]
-            },
-            # Use original simulation config if available, otherwise reconstruct
-            "simulation": original_simulation if original_simulation else {
-                "interval_seconds": result["simulation"]["interval_seconds"]
-            },
-            "replicas": {
-                "count": result["simulation"].get("replicas_count", 1)
-            },
-            "random_location": {
-                "enabled": result["simulation"].get("random_location_enabled", False),
-                "latitude_range": result["simulation"].get("latitude_range", [-90, 90]),
-                "longitude_range": result["simulation"].get("longitude_range", [-180, 180]),
-                "update_interval_seconds": result["simulation"].get("location_update_interval", 60)
-            },
-            "normal_parameters": {
-                k: v for k, v in result["parameters"].items()
-                if k in ["temperature", "humidity", "pressure", "vibration", "voltage"]
-            },
-            "anomalies": {
-                "enabled": result["parameters"].get("anomalies_enabled", False),
-                "probability": result["parameters"].get("anomaly_probability", 0.1),
-                "types": result["parameters"].get("anomaly_types")
-            },
-            "monitoring": {
-                "enabled": result["monitoring_enabled"],
-                "host": result["monitoring_host"],
-                "port": result["monitoring_port"]
-            },
-            "dynamic_reloading": {
-                "enabled": result["simulation"].get("dynamic_reload_enabled", False),
-                "check_interval_seconds": result["simulation"].get("reload_check_interval", 5)
-            }
-        }
-        
-        if result.get("sensor"):
-            restructured["sensor"] = result["sensor"]
-            
-        return restructured
+        # Ensure monitoring and dynamic reloading are enabled
+        if not config.get("monitoring", {}).get("enabled"):
+            logging.warning("Monitoring is required - enabling it")
+            config.setdefault("monitoring", {})["enabled"] = True
+
+        if not config.get("dynamic_reloading", {}).get("enabled"):
+            logging.warning("Dynamic reloading is required - enabling it")
+            config.setdefault("dynamic_reloading", {})["enabled"] = True
+
+        return config
 
     except FileNotFoundError:
         logging.error(f"Configuration file not found: {config_path}")
@@ -469,9 +300,7 @@ def load_identity(identity_path: str) -> Dict:
         with open(identity_path, "r") as f:
             raw_identity_data = json.load(f)
         if not isinstance(raw_identity_data, dict):
-            logging.error(
-                f"Identity file {identity_path} content must be a dictionary."
-            )
+            logging.error(f"Identity file {identity_path} content must be a dictionary.")
             raise ValueError("Identity file content must be a dictionary.")
 
         # Validate and parse using Pydantic model
@@ -496,19 +325,17 @@ def generate_sensor_id(identity: Dict) -> str:
     """Generate a new sensor ID in the format CITY_XXXXXX."""
     # Handle both new nested structure and legacy format
     location_str = None
-    
+
     # Check for nested location structure first
     location_data = identity.get("location")
     if isinstance(location_data, dict):
         location_str = location_data.get("city") or location_data.get("address")
     elif isinstance(location_data, str):
         location_str = location_data
-    
+
     if not location_str:  # Check if location_str is None or empty
         # This function expects location to be present in the identity dict
-        raise ValueError(
-            "Location is required in identity data to generate a sensor ID"
-        )
+        raise ValueError("Location is required in identity data to generate a sensor ID")
 
     uppercity_no_special_chars = "".join(c.upper() for c in location_str if c.isalpha())
 
@@ -557,7 +384,7 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
     location_value = None
     latitude_value = None
     longitude_value = None
-    
+
     location_data = working_identity.get("location")
     if isinstance(location_data, dict):
         # New nested structure
@@ -571,7 +398,7 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
         location_value = location_data
         latitude_value = working_identity.get("latitude")
         longitude_value = working_identity.get("longitude")
-    
+
     # Location must be a non-empty string
     has_location = isinstance(location_value, str) and bool(location_value.strip())
     has_latitude = isinstance(latitude_value, (int, float))
@@ -596,12 +423,8 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
         location_generator = LocationGenerator(random_location_config)
         available_cities = location_generator.cities
         if not available_cities:
-            logger.error(
-                "City data is not available or empty. Cannot generate random location."
-            )
-            raise RuntimeError(
-                "City data not available for random location generation."
-            )
+            logger.error("City data is not available or empty. Cannot generate random location.")
+            raise RuntimeError("City data not available for random location generation.")
 
         random_city_name = random.choice(list(available_cities.keys()))
         random_city_data = available_cities[random_city_name]
@@ -612,7 +435,7 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
             working_identity["location"]["city"] = random_city_name
             working_identity["location"]["coordinates"] = {
                 "latitude": random_city_data["latitude"],
-                "longitude": random_city_data["longitude"]
+                "longitude": random_city_data["longitude"],
             }
         else:
             # Create new location structure if needed
@@ -620,14 +443,14 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
                 "city": random_city_name,
                 "coordinates": {
                     "latitude": random_city_data["latitude"],
-                    "longitude": random_city_data["longitude"]
-                }
+                    "longitude": random_city_data["longitude"],
+                },
             }
-        
+
         # Also set flat values for backward compatibility
         working_identity["latitude"] = random_city_data["latitude"]
         working_identity["longitude"] = random_city_data["longitude"]
-        
+
         logger.info(
             f"Randomly selected base location: {random_city_name} "
             f"(Lat: {random_city_data['latitude']:.6f}, Lon: {random_city_data['longitude']:.6f})"
@@ -669,9 +492,7 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
         current_lat = working_identity.get("latitude")
         current_lon = working_identity.get("longitude")
 
-        if isinstance(current_lat, (int, float)) and isinstance(
-            current_lon, (int, float)
-        ):
+        if isinstance(current_lat, (int, float)) and isinstance(current_lon, (int, float)):
             gps_variation_km = gps_variation_meters / 1000.0
             logger.info(
                 f"Applying GPS fuzzing (up to {gps_variation_meters}m / {gps_variation_km:.2f}km) "
@@ -698,15 +519,18 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
             fuzzed_longitude = round(fuzzed_longitude, 5)
 
             # Update both nested and flat structure
-            if isinstance(working_identity.get("location"), dict) and "coordinates" in working_identity["location"]:
+            if (
+                isinstance(working_identity.get("location"), dict)
+                and "coordinates" in working_identity["location"]
+            ):
                 working_identity["location"]["coordinates"]["latitude"] = fuzzed_latitude
                 working_identity["location"]["coordinates"]["longitude"] = fuzzed_longitude
-            
+
             # Always update flat values for backward compatibility
             working_identity["latitude"] = fuzzed_latitude
             working_identity["longitude"] = fuzzed_longitude
-            
-            location_name = location_value or working_identity.get('location')
+
+            location_name = location_value or working_identity.get("location")
             logger.info(
                 f"Fuzzed coordinates for '{location_name}': "
                 f"New Lat: {fuzzed_latitude:.5f}, New Lon: {fuzzed_longitude:.5f}"
@@ -743,7 +567,7 @@ def process_identity_and_location(identity_data: Dict, app_config: Dict) -> Dict
             location_str = current_location.get("city") or current_location.get("address")
         else:
             location_str = current_location
-            
+
         if not (isinstance(location_str, str) and location_str.strip()):
             critical_error_msg = (
                 "Critical internal error: 'location' is missing or invalid in identity data "
@@ -777,9 +601,7 @@ def setup_logging(config):
     """Set up logging based on configuration."""
     log_config = config.get("logging", {})
     log_level = getattr(logging, log_config.get("level", "INFO"))
-    log_format = log_config.get(
-        "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    log_format = log_config.get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     log_file = log_config.get("file")
     console_output = log_config.get("console_output", True)
 
@@ -834,9 +656,7 @@ def file_watcher_thread(
         try:
             if not os.path.exists(file_path):
                 if last_mtime is not None:  # File was deleted
-                    logger.warning(
-                        f"File watcher: Watched file {file_path} has been deleted."
-                    )
+                    logger.warning(f"File watcher: Watched file {file_path} has been deleted.")
                     last_mtime = None  # Reset mtime so recreation is detected
                 # Wait and check again
                 stop_event.wait(check_interval)
@@ -845,13 +665,9 @@ def file_watcher_thread(
             current_mtime = os.path.getmtime(file_path)
             if last_mtime is None or current_mtime > last_mtime:
                 if last_mtime is None:
-                    logger.info(
-                        f"File watcher: File {file_path} has been created/appeared."
-                    )
+                    logger.info(f"File watcher: File {file_path} has been created/appeared.")
                 else:
-                    logger.info(
-                        f"File watcher: File {file_path} has changed. Reloading..."
-                    )
+                    logger.info(f"File watcher: File {file_path} has changed. Reloading...")
 
                 try:
                     new_data = load_function(file_path)
@@ -882,18 +698,14 @@ def file_watcher_thread(
                         logger.error(
                             f"File watcher: Unknown update type '{update_type}' for {file_path}"
                         )
-                        last_mtime = (
-                            current_mtime  # Update mtime to avoid reprocessing error
-                        )
+                        last_mtime = current_mtime  # Update mtime to avoid reprocessing error
                         stop_event.wait(check_interval)
                         continue
 
                     logger.info(
                         f"File watcher: Successfully reloaded {file_path}. Notifying simulator."
                     )
-                    update_method = getattr(
-                        simulator_instance, simulator_update_method_name
-                    )
+                    update_method = getattr(simulator_instance, simulator_update_method_name)
                     update_method()  # Call handle_config_updated() or handle_identity_updated()
 
                     last_mtime = current_mtime
@@ -967,50 +779,47 @@ def main():
         schema_json = json.dumps(schema_dict, indent=2)
         print(schema_json)
         sys.exit(0)
-    
+
     if args.llm_docs:
         # Output LLM documentation
         print_llm_documentation()
         sys.exit(0)
-    
+
     if args.generate_identity:
         # Generate a new format identity template
         from datetime import datetime
         import uuid
-        
+
         template = {
             "sensor_id": "SENSOR_XX_YYY_ZZZZ",
             "location": {
                 "city": "YourCity",
                 "state": "XX",
-                "coordinates": {
-                    "latitude": 40.7128,
-                    "longitude": -74.0060
-                },
+                "coordinates": {"latitude": 40.7128, "longitude": -74.0060},
                 "timezone": "America/New_York",
-                "address": "YourCity, XX, USA"
+                "address": "YourCity, XX, USA",
             },
             "device_info": {
                 "manufacturer": "SensorCorp",
                 "model": "WeatherStation Pro",
                 "firmware_version": "2.1.0",
                 "serial_number": f"SENSOR-{uuid.uuid4().hex[:6].upper()}",
-                "manufacture_date": datetime.now().strftime("%Y-%m-%d")
+                "manufacture_date": datetime.now().strftime("%Y-%m-%d"),
             },
             "deployment": {
                 "deployment_type": "stationary_unit",
                 "installation_date": datetime.now().strftime("%Y-%m-%d"),
                 "height_meters": 2.5,
-                "orientation_degrees": 0
+                "orientation_degrees": 0,
             },
             "metadata": {
                 "instance_id": f"i-{uuid.uuid4().hex[:16]}",
                 "identity_generation_timestamp": datetime.now().isoformat(),
                 "generation_seed": random.randint(10**20, 10**40),
-                "sensor_type": "environmental_monitoring"
-            }
+                "sensor_type": "environmental_monitoring",
+            },
         }
-        
+
         print(json.dumps(template, indent=2))
         sys.exit(0)
 
@@ -1025,17 +834,17 @@ def main():
             level=logging.DEBUG,
             format="%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
-            force=True  # Force reconfiguration
+            force=True,  # Force reconfiguration
         )
         # Set debug level for all loggers
         logging.getLogger().setLevel(logging.DEBUG)
-        for name in ['src.simulator', 'src.database', 'src.anomaly', 'SensorDatabase']:
+        for name in ["src.simulator", "src.database", "src.anomaly", "SensorDatabase"]:
             logging.getLogger(name).setLevel(logging.DEBUG)
-        
+
         logging.info("🔍 DEBUG MODE ENABLED - Extremely verbose logging active")
         logging.debug("Debug flag detected from command line")
         # Store debug flag globally
-        os.environ['DEBUG_MODE'] = 'true'
+        os.environ["DEBUG_MODE"] = "true"
     else:
         logging.basicConfig(
             level=logging.INFO,
@@ -1063,9 +872,7 @@ def main():
         sys.exit(1)
 
     if not os.path.isfile(identity_file_path):
-        print(
-            f"Error: Identity file not found at {identity_file_path}", file=sys.stderr
-        )
+        print(f"Error: Identity file not found at {identity_file_path}", file=sys.stderr)
         sys.exit(1)
 
     initial_config = {}
@@ -1078,44 +885,44 @@ def main():
 
     # Track signal count for forced exit
     signal_count = 0
-    
+
     # Set up signal handler for graceful shutdown
     def signal_handler(signum, frame):
         nonlocal shutdown_requested, simulator, stop_watcher_event, signal_count
-        
+
         signal_count += 1
-        
+
         # Force exit on third signal
         if signal_count >= 3:
             logging.critical("Received 3 signals, forcing immediate exit")
             sys.exit(1)
-        
+
         # Prevent multiple signal handling
         if shutdown_requested:
             logging.warning(f"Already shutting down (signal {signal_count}/3)")
             return
-            
-        sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else signum
+
+        sig_name = signal.Signals(signum).name if hasattr(signal, "Signals") else signum
         logging.info(f"Received {sig_name} signal, initiating graceful shutdown...")
         shutdown_requested = True
-        
+
         # Stop components
         if simulator:
             try:
                 simulator.stop()
             except Exception as e:
                 logging.error(f"Error stopping simulator: {e}")
-        
+
         if stop_watcher_event:
             try:
                 stop_watcher_event.set()
             except Exception as e:
                 logging.error(f"Error stopping watchers: {e}")
-        
+
         # Raise KeyboardInterrupt to break out of blocking calls
         if signal_count == 1:
             raise KeyboardInterrupt("Signal received")
-    
+
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
@@ -1146,13 +953,9 @@ def main():
 
         # Process initial identity, handle location, and generate ID if needed
         try:
-            initial_identity = process_identity_and_location(
-                raw_identity, initial_config
-            )
+            initial_identity = process_identity_and_location(raw_identity, initial_config)
         except (ValueError, RuntimeError) as e:  # Catch errors from processing
-            logging.error(
-                f"Failed to process initial identity or generate ID. Exiting. Error: {e}"
-            )
+            logging.error(f"Failed to process initial identity or generate ID. Exiting. Error: {e}")
             sys.exit(1)
 
         # Create ConfigManager with initial data
@@ -1160,17 +963,28 @@ def main():
 
         # Get sensor ID and location for logging
         identity = config_manager.get_identity()
-        sensor_id = identity.get('sensor_id') or identity.get('id', 'Not Set')
-        
+        sensor_id = identity.get("sensor_id") or identity.get("id", "Not Set")
+
         # Handle both old and new location formats
-        location_value = identity.get('location')
+        location_value = identity.get("location")
         if isinstance(location_value, dict):
-            location_display = location_value.get('city') or location_value.get('address', 'Not Set')
+            location_display = location_value.get("city") or location_value.get(
+                "address", "Not Set"
+            )
         else:
-            location_display = location_value or 'Not Set'
-        
+            location_display = location_value or "Not Set"
+
         logging.info(f"Using sensor ID: {sensor_id}")
         logging.info(f"Sensor Location: {location_display}")
+
+        # Log database mode prominently before creating simulator
+        db_mode = (
+            "WAL"
+            if os.environ.get("SENSOR_WAL", "true").lower()
+            not in ("false", "0", "no", "off", "delete")
+            else "DELETE"
+        )
+        logging.info(f"Database mode: {db_mode} (change with SENSOR_WAL env var)")
 
         # Create and run the simulator, passing the ConfigManager
         simulator = SensorSimulator(config_manager)
@@ -1179,9 +993,7 @@ def main():
         dynamic_reload_settings = config_manager.config.get("dynamic_reloading", {})
         if dynamic_reload_settings.get("enabled", False):
             check_interval = dynamic_reload_settings.get("check_interval_seconds", 5)
-            logging.info(
-                f"Dynamic reloading enabled. Check interval: {check_interval}s."
-            )
+            logging.info(f"Dynamic reloading enabled. Check interval: {check_interval}s.")
             stop_watcher_event = threading.Event()
 
             # Config file watcher
@@ -1224,7 +1036,7 @@ def main():
 
         # Perform startup health checks
         logging.info("Performing startup health checks...")
-        
+
         # 1. Check database is writable
         try:
             reading_count = simulator.database.get_database_stats()["total_readings"]
@@ -1232,29 +1044,33 @@ def main():
         except Exception as e:
             logging.error(f"✗ Database health check failed: {e}")
             raise RuntimeError(f"Database is not accessible: {e}")
-        
+
         # 2. Check disk space availability
         try:
             import shutil
+
             db_path = config_manager.get_database_config().get("path", "data/sensor_data.db")
             db_dir = os.path.dirname(os.path.abspath(db_path))
             stat = shutil.disk_usage(db_dir)
             free_gb = stat.free / (1024**3)
             min_required_gb = 0.1  # Require at least 100MB free
             if free_gb < min_required_gb:
-                raise RuntimeError(f"Insufficient disk space: {free_gb:.2f}GB free, need {min_required_gb}GB")
+                raise RuntimeError(
+                    f"Insufficient disk space: {free_gb:.2f}GB free, need {min_required_gb}GB"
+                )
             logging.info(f"✓ Disk space available ({free_gb:.2f}GB free)")
         except Exception as e:
             if "Insufficient disk space" in str(e):
                 logging.error(f"✗ {e}")
                 raise
             logging.warning(f"⚠ Could not check disk space: {e}")
-        
+
         # 3. Validate monitoring connectivity (if enabled)
         monitoring_config = config_manager.config.get("monitoring", {})
         if monitoring_config.get("enabled", False):
             try:
                 import socket
+
                 host = monitoring_config.get("host", "0.0.0.0")
                 port = monitoring_config.get("port", 8080)
                 # Just check if port is available (not in use)
@@ -1268,22 +1084,30 @@ def main():
                     logging.info(f"✓ Monitoring port {port} is available")
             except Exception as e:
                 logging.warning(f"⚠ Could not verify monitoring port: {e}")
-        
+
         logging.info("Health checks completed. Starting simulation...")
-        
+
         # Track start time for diagnostics
         start_time = time.time()
-        logging.info(f"Starting simulation: run_time={simulator.run_time_seconds}s, readings_per_second={simulator.readings_per_second}")
+        logging.info(
+            f"Starting simulation: run_time={simulator.run_time_seconds}s, readings_per_second={simulator.readings_per_second}"
+        )
         simulator.run()
-        
+
         # Check if simulator stopped early
         elapsed = time.time() - start_time
         expected_runtime = simulator.run_time_seconds
         if elapsed < expected_runtime * 0.9:  # Allow 10% tolerance
-            logging.warning(f"Simulation stopped early: expected {expected_runtime}s, ran for {elapsed:.1f}s")
-            logging.info(f"Generated {simulator.readings_count} readings, {simulator.error_count} errors")
+            logging.warning(
+                f"Simulation stopped early: expected {expected_runtime}s, ran for {elapsed:.1f}s"
+            )
+            logging.info(
+                f"Generated {simulator.readings_count} readings, {simulator.error_count} errors"
+            )
             if simulator.error_count > 0:
-                logging.critical(f"Error rate: {simulator.error_count/max(simulator.readings_count, 1)*100:.2f}%")
+                logging.critical(
+                    f"Error rate: {simulator.error_count / max(simulator.readings_count, 1) * 100:.2f}%"
+                )
 
     except (KeyboardInterrupt, SystemExit):
         logging.info("Main: Simulation interrupted by signal.")
@@ -1296,19 +1120,21 @@ def main():
         logging.error(f"Unexpected error in main: {e}", exc_info=True)
     finally:
         logging.info("Main: Beginning shutdown sequence...")
-        
+
         # Stop file watchers
         if stop_watcher_event:
             logging.info("Main: Signaling watcher threads to stop...")
             stop_watcher_event.set()
-            
+
             # Give threads a short time to finish
             for thread in watcher_threads:
                 if thread.is_alive():
                     logging.debug(f"Main: Waiting for watcher thread {thread.name}...")
                     thread.join(timeout=1.0)  # Short timeout for responsive shutdown
                     if thread.is_alive():
-                        logging.debug(f"Main: Watcher thread {thread.name} still running, abandoning.")
+                        logging.debug(
+                            f"Main: Watcher thread {thread.name} still running, abandoning."
+                        )
 
         # Simulator's own cleanup (like DB close) happens in its run() finally block.
         logging.info("Main: Shutdown complete.")

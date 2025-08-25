@@ -4,13 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build/Run Commands
 - Build Docker image: `docker build -t sensor-simulator .`
-- Run with Docker: `docker run -v $(pwd)/data:/app/data -e SENSOR_ID=CUSTOM001 -e SENSOR_LOCATION="Custom Location" sensor-simulator`
+- Run with Docker (WAL mode - default): `docker run -v $(pwd)/data:/app/data sensor-simulator`
+- Run with Docker (DELETE mode for Mac/Windows): `docker run -v $(pwd)/data:/app/data -e SENSOR_WAL=false sensor-simulator`
 - Run directly: `uv run main.py --config config.yaml --identity node_identity.json`
 - Generate identity template: `uv run main.py --generate-identity`
 - Build multi-platform images: `./build.sh`
 - Test container: `./test_container.sh`
 - Run tests: `uv run pytest tests/`
 - Keep existing database on startup: `docker run -v $(pwd)/data:/app/data -e PRESERVE_EXISTING_DB=true sensor-simulator`
+
+## Database Modes
+- **WAL mode (default)**: Better performance, works great on Linux
+- **DELETE mode**: Set `SENSOR_WAL=false` for Docker Desktop on Mac/Windows
 
 ## Code Style Guidelines
 - Python 3.11+ with type annotations (from typing import Dict, Optional, etc.)
@@ -23,24 +28,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Comprehensive error handling with retry logic and graceful degradation
 - Logging with different levels and both file and console output
 
-## Identity File Formats
-The system supports both legacy flat and new nested identity formats:
+## Identity File Format
+The system uses a nested identity format:
 
-### Legacy Format (backward compatible)
-```json
-{
-  "id": "SENSOR_NY_123456",
-  "location": "New York",
-  "latitude": 40.7128,
-  "longitude": -74.0060,
-  "timezone": "America/New_York",
-  "manufacturer": "SensorTech",
-  "model": "TempSensor Pro",
-  "firmware_version": "1.2.0"
-}
-```
-
-### New Format (enhanced metadata)
+### Standard Format
 ```json
 {
   "sensor_id": "SENSOR_CO_DEN_8548",
@@ -73,3 +64,14 @@ The system supports both legacy flat and new nested identity formats:
   }
 }
 ```
+
+## Important Configuration Notes
+- **Dynamic reloading is now required** - monitoring and dynamic_reloading are automatically enabled
+- **WAL mode is the default** - the database uses WAL mode unless SENSOR_WAL=false is set
+- **No legacy support** - only the nested identity format is supported
+
+## Development Guidelines  
+- Always use ruff for python lint checking
+- Always use uv, instead of python, when writing python scripts
+- Make sure each CLI line is correctly terminated or has a \ for continuation at 80 characters
+- Ensure database mode is logged at startup

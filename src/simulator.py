@@ -35,7 +35,9 @@ class SensorSimulator:
         self.identity = self.config_manager.get_identity()  # Get initial identity
 
         # Check if debug mode is enabled
-        self.debug_mode = os.environ.get('DEBUG_MODE') == 'true' or logger.isEnabledFor(logging.DEBUG)
+        self.debug_mode = os.environ.get("DEBUG_MODE") == "true" or logger.isEnabledFor(
+            logging.DEBUG
+        )
         if self.debug_mode:
             logger.setLevel(logging.DEBUG)
             logger.debug("🔍 SensorSimulator initialized in DEBUG mode")
@@ -86,13 +88,13 @@ class SensorSimulator:
         # Initialize database
         # By default, delete old database to avoid corruption issues from unclean shutdowns
         # Set PRESERVE_EXISTING_DB=true to keep existing data
-        preserve_db = os.environ.get('PRESERVE_EXISTING_DB', 'false').lower() == 'true'
-        
+        preserve_db = os.environ.get("PRESERVE_EXISTING_DB", "false").lower() == "true"
+
         if preserve_db:
             logger.info("PRESERVE_EXISTING_DB=true - Keeping existing database")
         else:
             logger.debug("Starting fresh - old database will be deleted if it exists")
-        
+
         self.database = SensorDatabase(db_path, preserve_existing_db=preserve_db)
 
         # Set up logging to file (using config from ConfigManager)
@@ -103,9 +105,7 @@ class SensorSimulator:
                 os.makedirs(log_dir, exist_ok=True)
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(
-                logging.Formatter(
-                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-                )
+                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             )
             logger.addHandler(file_handler)
 
@@ -134,9 +134,7 @@ class SensorSimulator:
             # ConfigManager is now passed in, no internal initialization.
 
             logging_config = self.config_manager.get_logging_config()
-            logging.getLogger().setLevel(
-                getattr(logging, logging_config.get("level", "INFO"))
-            )
+            logging.getLogger().setLevel(getattr(logging, logging_config.get("level", "INFO")))
 
             self.sensor_config = self.config_manager.get_sensor_config()
             self.normal_params = self.config_manager.get_normal_parameters() or {}
@@ -165,7 +163,9 @@ class SensorSimulator:
             # Initialize monitoring server if enabled
             try:
                 monitoring_cfg = self.config_manager.config.get("monitoring") or {}
-                self.monitoring_enabled = monitoring_cfg.get("enabled", False) if monitoring_cfg else False
+                self.monitoring_enabled = (
+                    monitoring_cfg.get("enabled", False) if monitoring_cfg else False
+                )
                 self.monitoring_server = None
             except Exception as e:
                 logger.warning(f"Failed to get monitoring config: {e}. Disabling monitoring.")
@@ -210,7 +210,9 @@ class SensorSimulator:
         self.model = model_val
 
         # Firmware Version - check nested first, then flat
-        firmware_val = device_info.get("firmware_version") or current_identity.get("firmware_version")
+        firmware_val = device_info.get("firmware_version") or current_identity.get(
+            "firmware_version"
+        )
         if firmware_val is None:
             raise ValueError("Firmware version is required in identity configuration")
         # Validate SemVer format
@@ -354,15 +356,11 @@ class SensorSimulator:
 
     def handle_config_updated(self):
         """Apply changes after the main configuration (config.yaml) has been updated."""
-        logger.info(
-            "Applying configuration changes to simulator (triggered externally)"
-        )
+        logger.info("Applying configuration changes to simulator (triggered externally)")
 
         # Update logging configuration
         logging_config = self.config_manager.get_logging_config()
-        logging.getLogger().setLevel(
-            getattr(logging, logging_config.get("level", "INFO"))
-        )
+        logging.getLogger().setLevel(getattr(logging, logging_config.get("level", "INFO")))
 
         # Update simulation parameters
         simulation_config = self.config_manager.get_simulation_config()
@@ -386,22 +384,15 @@ class SensorSimulator:
         # Update monitoring configuration
         monitoring_config = self.config_manager.config.get("monitoring", {})
         monitoring_enabled = monitoring_config.get("enabled", False)
-        current_monitoring_host = (
-            self.monitoring_server.host if self.monitoring_server else None
-        )
-        current_monitoring_port = (
-            self.monitoring_server.port if self.monitoring_server else None
-        )
+        current_monitoring_host = self.monitoring_server.host if self.monitoring_server else None
+        current_monitoring_port = self.monitoring_server.port if self.monitoring_server else None
 
         if monitoring_enabled:
             new_host = monitoring_config.get("host", "0.0.0.0")
             new_port = monitoring_config.get("port", 8080)
             if not self.monitoring_enabled or (
                 self.monitoring_server
-                and (
-                    current_monitoring_host != new_host
-                    or current_monitoring_port != new_port
-                )
+                and (current_monitoring_host != new_host or current_monitoring_port != new_port)
             ):
                 logger.info(
                     f"Monitoring server config changed or being enabled. Host: {new_host}, Port: {new_port}"
@@ -426,9 +417,7 @@ class SensorSimulator:
         try:
             new_identity = self.config_manager.get_identity()
             if new_identity != self.identity:
-                logger.info(
-                    f"Identity updated. Old: {self.identity}, New: {new_identity}"
-                )
+                logger.info(f"Identity updated. Old: {self.identity}, New: {new_identity}")
                 old_iana_timezone = self.timezone
                 self.identity = new_identity
                 # Re-fetch identity-dependent attributes
@@ -442,7 +431,9 @@ class SensorSimulator:
                     coords = location_data.get("coordinates", {})
                     self.latitude = coords.get("latitude", self.identity.get("latitude"))
                     self.longitude = coords.get("longitude", self.identity.get("longitude"))
-                    self.timezone = location_data.get("timezone", self.identity.get("timezone", "UTC"))
+                    self.timezone = location_data.get(
+                        "timezone", self.identity.get("timezone", "UTC")
+                    )
                 else:
                     # Legacy flat format
                     self.city_name = location_data
@@ -452,9 +443,7 @@ class SensorSimulator:
 
                 try:
                     # Update timezone_offset_str based on new IANA timezone
-                    self.timezone_offset_str = self._get_offset_str(
-                        time.time(), self.timezone
-                    )
+                    self.timezone_offset_str = self._get_offset_str(time.time(), self.timezone)
                     logger.info(
                         f"IANA Timezone updated via handle_identity_updated to: '{self.timezone}' (New Offset: '{self.timezone_offset_str}')"
                     )
@@ -471,9 +460,7 @@ class SensorSimulator:
                 self._get_initial_location()  # May need to re-fetch/re-validate location dependent data
                 if self.anomaly_generator:
                     self.anomaly_generator.update_identity(self.identity)
-                logger.info(
-                    "Sensor identity and dependent components updated successfully."
-                )
+                logger.info("Sensor identity and dependent components updated successfully.")
             else:
                 logger.debug("Identity checked, no changes detected.")
         except Exception as e:
@@ -519,32 +506,32 @@ class SensorSimulator:
                 "status_code": reading.get("status_code", 0 if not anomaly_flag else 1),
                 "anomaly_flag": anomaly_flag,
                 "anomaly_type": anomaly_type,
-                "firmware_version": device_info.get("firmware_version") or self.identity.get("firmware_version"),
+                "firmware_version": device_info.get("firmware_version")
+                or self.identity.get("firmware_version"),
                 "model": device_info.get("model") or self.identity.get("model"),
-                "manufacturer": device_info.get("manufacturer") or self.identity.get("manufacturer"),
+                "manufacturer": device_info.get("manufacturer")
+                or self.identity.get("manufacturer"),
                 "location": self.city_name,  # Pass city name
                 "latitude": self.latitude,
                 "longitude": self.longitude,
                 "original_timezone": self.timezone_offset_str,  # Pass the stored offset string
                 "synced": False,  # Default value for new readings
                 # New fields from enhanced identity
-                "serial_number": getattr(self, 'serial_number', None),
-                "manufacture_date": getattr(self, 'manufacture_date', None),
-                "deployment_type": getattr(self, 'deployment_type', None),
-                "installation_date": getattr(self, 'installation_date', None),
-                "height_meters": getattr(self, 'height_meters', None),
-                "orientation_degrees": getattr(self, 'orientation_degrees', None),
-                "instance_id": getattr(self, 'instance_id', None),
-                "sensor_type": getattr(self, 'sensor_type', None),
+                "serial_number": getattr(self, "serial_number", None),
+                "manufacture_date": getattr(self, "manufacture_date", None),
+                "deployment_type": getattr(self, "deployment_type", None),
+                "installation_date": getattr(self, "installation_date", None),
+                "height_meters": getattr(self, "height_meters", None),
+                "orientation_degrees": getattr(self, "orientation_degrees", None),
+                "instance_id": getattr(self, "instance_id", None),
+                "sensor_type": getattr(self, "sensor_type", None),
             }
 
             # Create and validate the reading with Pydantic model
             try:
                 sensor_reading_instance = SensorReadingSchema(**reading_data_for_schema)
             except ValidationError as ve:
-                logger.error(
-                    f"Pydantic validation error while processing reading: {ve}"
-                )
+                logger.error(f"Pydantic validation error while processing reading: {ve}")
                 # Optionally, handle this error more gracefully, e.g., by storing
                 # the raw data in a separate "error" table or logging more details.
                 self.error_count += 1
@@ -584,7 +571,7 @@ class SensorSimulator:
             error_msg = str(e).lower()
             if "disk i/o error" in error_msg:
                 # Check if database has been retrying for a while
-                if hasattr(self.database, 'failure_retry_count'):
+                if hasattr(self.database, "failure_retry_count"):
                     retry_count = self.database.failure_retry_count
                     if retry_count >= len(self.database.failure_buffer_retry_intervals):
                         # We've hit the 15-second threshold
@@ -599,49 +586,55 @@ class SensorSimulator:
             elif "malformed" in error_msg or "corrupt" in error_msg:
                 # Try to handle corruption gracefully
                 logger.error("DATABASE CORRUPTION detected")
-                
+
                 # If this is the first corruption error, try to recover
-                if not hasattr(self, '_corruption_recovery_attempted'):
+                if not hasattr(self, "_corruption_recovery_attempted"):
                     self._corruption_recovery_attempted = True
                     logger.info("Attempting automatic database recovery...")
-                    
+
                     try:
                         # Close current database connection
                         self.database.close()
-                        
+
                         # Backup corrupted database
                         import shutil
+
                         backup_path = f"{self.database.db_path}.corrupted.{int(time.time())}"
                         shutil.copy2(self.database.db_path, backup_path)
                         logger.info(f"Corrupted database backed up to: {backup_path}")
-                        
+
                         # Remove corrupted database
                         os.remove(self.database.db_path)
-                        
+
                         # Also remove journal files
-                        for suffix in ['-journal', '-wal', '-shm']:
+                        for suffix in ["-journal", "-wal", "-shm"]:
                             journal_path = f"{self.database.db_path}{suffix}"
                             if os.path.exists(journal_path):
                                 os.remove(journal_path)
                                 logger.debug(f"Removed {journal_path}")
-                        
+
                         # Create new database
                         logger.info("Creating fresh database...")
                         from src.database import SensorDatabase
+
                         # Always preserve=False when recovering from corruption
-                        self.database = SensorDatabase(self.database.db_path, preserve_existing_db=False)
+                        self.database = SensorDatabase(
+                            self.database.db_path, preserve_existing_db=False
+                        )
                         logger.info("Database recreated successfully, continuing operation")
-                        
+
                         # Reset error counters since we recovered
                         self.consecutive_errors = 0
                         return True
-                        
+
                     except Exception as recovery_error:
                         logger.error(f"Failed to recover from corruption: {recovery_error}")
                         logger.critical("DATABASE CORRUPTION - unable to recover, stopping")
                         return False
                 else:
-                    logger.critical("DATABASE CORRUPTION persists after recovery attempt - stopping")
+                    logger.critical(
+                        "DATABASE CORRUPTION persists after recovery attempt - stopping"
+                    )
                     return False
 
             # If too many consecutive errors, stop the simulator
@@ -653,11 +646,14 @@ class SensorSimulator:
                 return False
 
             # For transient errors, log but continue
-            logger.warning(f"Continuing after error {self.consecutive_errors}/{self.max_consecutive_errors}")
+            logger.warning(
+                f"Continuing after error {self.consecutive_errors}/{self.max_consecutive_errors}"
+            )
             return True  # Return True to continue despite the error
 
     def _start_debug_reporter(self):
         """Start a background thread that reports detailed status every 5 seconds in debug mode."""
+
         def debug_reporter():
             """Background thread to report detailed status."""
             last_reading_count = 0
@@ -685,6 +681,7 @@ class SensorSimulator:
 
                 # Memory usage
                 import psutil
+
                 process = psutil.Process()
                 memory_mb = process.memory_info().rss / 1024 / 1024
 
@@ -707,23 +704,31 @@ class SensorSimulator:
                         logger.debug(f"   🔴 Active anomalies: {anomaly_state}")
 
                 # Batch buffer status
-                if hasattr(self.database, 'batch_buffer'):
+                if hasattr(self.database, "batch_buffer"):
                     batch_size = len(self.database.batch_buffer)
                     if batch_size > 0:
-                        logger.debug(f"   📦 Batch buffer: {batch_size}/{self.database.batch_size} readings pending")
-                
+                        logger.debug(
+                            f"   📦 Batch buffer: {batch_size}/{self.database.batch_size} readings pending"
+                        )
+
                 # Failure buffer status
-                if hasattr(self.database, 'failure_buffer'):
+                if hasattr(self.database, "failure_buffer"):
                     failure_size = len(self.database.failure_buffer)
                     if failure_size > 0:
                         retry_count = self.database.failure_retry_count
                         if retry_count < len(self.database.failure_buffer_retry_intervals):
-                            next_interval = self.database.failure_buffer_retry_intervals[retry_count]
+                            next_interval = self.database.failure_buffer_retry_intervals[
+                                retry_count
+                            ]
                         else:
                             next_interval = self.database.failure_buffer_max_retry_interval
-                        logger.debug(f"   ⚠️  Failure buffer: {failure_size} readings (retry #{retry_count+1} in {next_interval:.0f}s)")
+                        logger.debug(
+                            f"   ⚠️  Failure buffer: {failure_size} readings (retry #{retry_count + 1} in {next_interval:.0f}s)"
+                        )
 
-        self.debug_thread = threading.Thread(target=debug_reporter, daemon=True, name="DebugReporter")
+        self.debug_thread = threading.Thread(
+            target=debug_reporter, daemon=True, name="DebugReporter"
+        )
         self.debug_thread.start()
         logger.debug("Started debug status reporter thread")
 
@@ -735,8 +740,10 @@ class SensorSimulator:
         logger.info(f"Generating {self.readings_per_second} readings per second")
 
         if self.debug_mode:
-            logger.debug(f"Debug: Sensor ID={self.sensor_id}, Location={self.city_name}, "
-                        f"Coords=({self.latitude}, {self.longitude}), Timezone={self.timezone}")
+            logger.debug(
+                f"Debug: Sensor ID={self.sensor_id}, Location={self.city_name}, "
+                f"Coords=({self.latitude}, {self.longitude}), Timezone={self.timezone}"
+            )
 
         # Start monitoring server if enabled
         if self.monitoring_enabled and self.monitoring_server:
@@ -764,10 +771,12 @@ class SensorSimulator:
                     reading = self.generate_reading(self.sensor_id)
 
                     if self.debug_mode and iteration_count % 10 == 1:
-                        logger.debug(f"Generated reading: temp={reading.get('temperature', 0):.2f}°C, "
-                                   f"humidity={reading.get('humidity', 0):.1f}%, "
-                                   f"pressure={reading.get('pressure', 0):.1f}hPa, "
-                                   f"anomaly={reading.get('anomaly_flag', False)}")
+                        logger.debug(
+                            f"Generated reading: temp={reading.get('temperature', 0):.2f}°C, "
+                            f"humidity={reading.get('humidity', 0):.1f}%, "
+                            f"pressure={reading.get('pressure', 0):.1f}hPa, "
+                            f"anomaly={reading.get('anomaly_flag', False)}"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to generate reading: {e}", exc_info=True)
                     logger.error("Cannot continue without ability to generate readings")
@@ -776,11 +785,17 @@ class SensorSimulator:
                 if not self.process_reading(reading):
                     # Only break if we've hit the max consecutive errors limit
                     if self.consecutive_errors >= self.max_consecutive_errors:
-                        logger.error(f"Stopping: Hit max consecutive errors ({self.consecutive_errors})")
-                        logger.info(f"Total errors: {self.error_count}, Total readings: {self.readings_count}")
+                        logger.error(
+                            f"Stopping: Hit max consecutive errors ({self.consecutive_errors})"
+                        )
+                        logger.info(
+                            f"Total errors: {self.error_count}, Total readings: {self.readings_count}"
+                        )
                         break
                     else:
-                        logger.warning(f"Failed to process reading (error {self.consecutive_errors}/{self.max_consecutive_errors})")
+                        logger.warning(
+                            f"Failed to process reading (error {self.consecutive_errors}/{self.max_consecutive_errors})"
+                        )
 
                 # Sleep to maintain the configured rate
                 sleep_time = 1.0 / self.readings_per_second
@@ -807,10 +822,14 @@ class SensorSimulator:
             elapsed = time.time() - self.start_time
             if elapsed < self.run_time_seconds - 1:  # Allow 1 second tolerance
                 if self.consecutive_errors >= self.max_consecutive_errors:
-                    logger.error(f"Sensor stopped early: Too many consecutive errors ({self.consecutive_errors})")
+                    logger.error(
+                        f"Sensor stopped early: Too many consecutive errors ({self.consecutive_errors})"
+                    )
                     logger.critical(f"Only ran for {elapsed:.1f}s out of {self.run_time_seconds}s")
                 elif self.error_count > 0:
-                    logger.warning(f"Sensor stopped early: Encountered {self.error_count} total errors")
+                    logger.warning(
+                        f"Sensor stopped early: Encountered {self.error_count} total errors"
+                    )
                     logger.error(f"Only ran for {elapsed:.1f}s out of {self.run_time_seconds}s")
                 else:
                     logger.info(f"Sensor stopped early")
@@ -892,9 +911,7 @@ class SensorSimulator:
             "firmware_version": self.firmware_version,  # Return enum member
             "model": self.model,  # Return enum member
             "manufacturer": self.manufacturer,  # Return enum member
-            "database_healthy": self.database.is_healthy()
-            if hasattr(self, "database")
-            else False,
+            "database_healthy": self.database.is_healthy() if hasattr(self, "database") else False,
             "memory_usage_mb": memory_usage.get("current_mb", 0),
             "memory_peak_mb": memory_usage.get("peak_mb", 0),
             "memory_growth_percent": memory_usage.get("growth_percent", 0),
@@ -920,12 +937,8 @@ class SensorSimulator:
         reading = {
             "timestamp": time.time(),
             "sensor_id": sensor_id,  # Use provided sensor_id, usually self.sensor_id
-            "temperature": self._generate_normal_value(
-                normal_params.get("temperature", {})
-            ),
-            "vibration": self._generate_normal_value(
-                normal_params.get("vibration", {})
-            ),
+            "temperature": self._generate_normal_value(normal_params.get("temperature", {})),
+            "vibration": self._generate_normal_value(normal_params.get("vibration", {})),
             "humidity": self._generate_normal_value(normal_params.get("humidity", {})),
             "pressure": self._generate_normal_value(normal_params.get("pressure", {})),
             "voltage": self._generate_normal_value(normal_params.get("voltage", {})),
@@ -947,8 +960,8 @@ class SensorSimulator:
             anomaly_type = self.anomaly_generator.select_anomaly_type()
             if anomaly_type:
                 self.anomaly_generator.start_anomaly(anomaly_type)
-                modified_reading, is_anomaly, anomaly_type = (
-                    self.anomaly_generator.apply_anomaly(reading, anomaly_type)
+                modified_reading, is_anomaly, anomaly_type = self.anomaly_generator.apply_anomaly(
+                    reading, anomaly_type
                 )
                 if modified_reading:
                     reading = modified_reading
@@ -1070,7 +1083,7 @@ class SensorSimulator:
         """
         # SemVer regex pattern
         # Matches: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
-        semver_pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+        semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
         return bool(re.match(semver_pattern, version))
 
     def _get_offset_str(self, unix_timestamp: float, iana_timezone_name: str) -> str:
