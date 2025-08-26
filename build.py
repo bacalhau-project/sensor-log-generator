@@ -416,6 +416,12 @@ class DockerComposeBuilder:
 
         base_image = f"{self.registry}/{self.image_name}"
 
+        # Create version string with dev suffix for local builds
+        version_str = str(version)
+        if self.dev_mode or not is_ci:
+            # Add dev suffix with short commit hash
+            version_str = f"{version}-dev.{commit[:7]}" if commit != "unknown" else f"{version}-dev"
+
         # Prepare tags based on environment
         tags = []
         if self.dev_mode or not is_ci:
@@ -424,9 +430,9 @@ class DockerComposeBuilder:
             tags = [
                 f"{base_image}:dev",
                 f"{base_image}:dev-{dev_timestamp}",
-                f"{base_image}:{version}-dev",
+                f"{base_image}:{version_str}",
             ]
-            console.print("[yellow]📦 Development mode - building for local testing[/yellow]")
+            console.print(f"[yellow]📦 Development mode - version: {version_str}[/yellow]")
         else:
             # Production build
             tags = [
@@ -445,7 +451,7 @@ class DockerComposeBuilder:
             "IMAGE_TAG": tags[0],
             "PLATFORMS": self.platforms,
             "DOCKERFILE": self.dockerfile,
-            "VERSION": str(version),
+            "VERSION": version_str,
             "BUILD_DATE": datetime.now().isoformat(),
             "GIT_COMMIT": commit,
             "GIT_BRANCH": branch,
@@ -526,11 +532,14 @@ class DockerComposeBuilder:
             console.print("[green]✓[/green] Pushed tag to remote")
 
     def write_tag_files(self, version: semver.Version, datetime_tag: str, tags: list[str]):
-        """Write tag information to files"""
+        """Write tag information to files for reference"""
         console.print("[blue]Writing tag information to files...[/blue]")
 
         Path(".latest-image-tag").write_text(f"{datetime_tag}\n")
-        Path(".latest-semver").write_text(f"{version}\n")
+
+        # Use the version string from env_vars which includes dev suffix if applicable
+        version_str = self.env_vars.get("VERSION", str(version))
+        Path(".latest-semver").write_text(f"{version_str}\n")
 
         # Write first tag as the main registry image
         if tags:
@@ -543,7 +552,7 @@ class DockerComposeBuilder:
         Path(".env.build").write_text("\n".join(env_content) + "\n")
 
         console.print(f"  → .latest-image-tag: {datetime_tag}")
-        console.print(f"  → .latest-semver: {version}")
+        console.print(f"  → .latest-semver: {version_str}")
         console.print(f"  → .latest-registry-image: {tags[0] if tags else 'N/A'}")
         console.print("  → .env.build: Build environment saved")
 
@@ -555,13 +564,16 @@ class DockerComposeBuilder:
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
 
+        # Get version string with dev suffix if applicable
+        version_str = self.env_vars.get("VERSION", str(version))
+
         table.add_row("Build System", "Docker Compose")
         table.add_row("Compose File", self.compose_file)
         table.add_row("Image Name", self.image_name)
         table.add_row("Registry", self.registry)
         table.add_row("Build Mode", "Development" if self.dev_mode else "Production")
         table.add_row("Build Type", "CI/CD" if is_ci else "Local")
-        table.add_row("Semantic Version", str(version))
+        table.add_row("Semantic Version", version_str)
         table.add_row("DateTime Tag", datetime_tag)
         table.add_row("Platforms", self.platforms)
         table.add_row("Tags Created", str(len(tags)))
@@ -708,7 +720,14 @@ def main(
                 console.print("[blue]No existing version found, starting at 1.0.0[/blue]")
 
             version = builder.bump_version(current_version, version_bump)
-            console.print(f"[blue]New version ({version_bump} bump): {version}[/blue]")
+            if dev_mode:
+                commit, _ = builder.get_git_info()
+                version_display = (
+                    f"{version}-dev.{commit[:7]}" if commit != "unknown" else f"{version}-dev"
+                )
+                console.print(f"[blue]New version ({version_bump} bump): {version_display}[/blue]")
+            else:
+                console.print(f"[blue]New version ({version_bump} bump): {version}[/blue]")
 
         # Generate datetime tag
         datetime_tag = datetime.now().strftime("%y%m%d%H%M")
@@ -719,8 +738,9 @@ def main(
         # Build and push with Docker Compose
         tags = builder.build_and_push_with_compose(version, datetime_tag, tags)
 
-        # Create git tag
-        if not skip_push and not dev_mode:
+        # Create git tag (only for production builds)
+        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+        if not skip_push and not dev_mode and is_ci:
             builder.create_git_tag(version)
 
         # Write tag files
