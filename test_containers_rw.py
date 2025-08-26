@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python
 """
 Test concurrent database read/write using Docker containers.
 
@@ -345,7 +345,7 @@ ENTRYPOINT ["python", "/app/writer.py"]
         # Clean up any existing container
         subprocess.run(
             ["docker", "rm", "-f", container_name],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
@@ -386,7 +386,7 @@ ENTRYPOINT ["python", "/app/writer.py"]
         # Clean up any existing container
         subprocess.run(
             ["docker", "rm", "-f", container_name],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
@@ -581,7 +581,7 @@ ENTRYPOINT ["python", "/app/writer.py"]
         for container in self.containers:
             subprocess.run(
                 ["docker", "stop", container],
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             console.print(f"  [green]✓[/green] Stopped: {container}")
@@ -668,7 +668,7 @@ def main(num_readers: int, duration: int, write_rate: int, read_interval: float,
         for container in orchestrator.containers:
             subprocess.run(
                 ["docker", "stop", container],
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
         sys.exit(130)

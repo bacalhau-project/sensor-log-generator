@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python
 """
 Test concurrent database readers using Docker containers.
 
@@ -168,7 +168,7 @@ ENTRYPOINT ["python", "/app/reader.py"]
             try:
                 subprocess.run(
                     ["docker", "build", "-t", self.image_name, tmpdir],
-                    capture_output=True,
+                    stdout=subprocess.DEVNULL,
                     text=True,
                     check=True,
                 )
@@ -185,7 +185,7 @@ ENTRYPOINT ["python", "/app/reader.py"]
         # Remove any existing container with the same name
         subprocess.run(
             ["docker", "rm", "-f", container_name],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
@@ -312,7 +312,7 @@ ENTRYPOINT ["python", "/app/reader.py"]
         for container_name in self.containers:
             subprocess.run(
                 ["docker", "stop", container_name],
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             console.print(f"  [green]✓[/green] Stopped: {container_name}")
@@ -446,7 +446,7 @@ def main(num_containers: int, duration: int, interval: float, db_path: str):
         for container in tester.containers:
             subprocess.run(
                 ["docker", "stop", container],
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
         sys.exit(130)
