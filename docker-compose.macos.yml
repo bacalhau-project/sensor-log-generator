@@ -1,3 +1,6 @@
+# Docker Compose configuration for macOS/Windows Docker Desktop
+# Uses DELETE journal mode for proper SQLite sync with host filesystem
+
 services:
   sensor-simulators:
     image: ghcr.io/bacalhau-project/sensor-log-generator:latest
@@ -6,9 +9,9 @@ services:
     environment:
       - CONFIG_FILE=/config/config.yaml
       - IDENTITY_FILE=/config/node-identity.json
-      # IMPORTANT: Docker Desktop on macOS/Windows has issues with SQLite WAL mode
-      # Uncomment the line below to use DELETE mode for proper data persistence:
-      # - SENSOR_WAL=false  # REQUIRED for macOS/Windows Docker Desktop!
+      # DELETE mode is REQUIRED for Docker Desktop on macOS/Windows
+      # WAL mode doesn't sync properly with host filesystem
+      - SENSOR_WAL=false
     volumes:
       - ./config:/config
       - ./data:/app/data  # Mount local data directory for database persistence

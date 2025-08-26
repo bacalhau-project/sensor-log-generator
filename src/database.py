@@ -6,9 +6,7 @@ No threading, no complexity, just works.
 import contextlib
 import sqlite3
 import time
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -62,7 +60,7 @@ class SensorDatabase:
         self.conn: sqlite3.Connection | None = None
 
         # Batch processing settings
-        self.batch_buffer: list[SensorReadingSchema] = []
+        self.batch_buffer: list[tuple] = []  # List of tuples for SQL insertion
         self.batch_size = 50
         self.batch_timeout = 10.0
         self.last_batch_time = time.time()
@@ -154,7 +152,31 @@ class SensorDatabase:
         Args:
             reading: SensorReadingSchema object with validated data
         """
-        self.batch_buffer.append(reading)
+        # Convert Pydantic model to tuple for SQL insertion
+        reading_tuple = (
+            reading.timestamp,
+            reading.sensor_id,
+            reading.temperature,
+            reading.humidity,
+            reading.pressure,
+            reading.voltage,
+            reading.vibration,
+            reading.status_code,
+            reading.anomaly_flag,
+            reading.anomaly_type,
+            reading.firmware_version,
+            reading.model,
+            reading.manufacturer,
+            reading.serial_number,
+            reading.location,
+            reading.latitude,
+            reading.longitude,
+            reading.original_timezone,  # Fixed: was timezone
+            reading.deployment_type,
+            reading.installation_date,
+            reading.height_meters,
+        )
+        self.batch_buffer.append(reading_tuple)
 
         # Check if we should commit
         current_time = time.time()
@@ -164,184 +186,56 @@ class SensorDatabase:
             self.commit_batch()
 
     def commit_batch(self):
-        """Commit the current batch to the database."""
+        """Commit the current batch of readings to the database."""
         if not self.batch_buffer:
-            return 0
+            return
 
-        assert self.conn is not None
-        cursor = self.conn.cursor()
-
-        # Prepare data for insertion
-        batch_data = []
-        for reading in self.batch_buffer:
-            batch_data.append(
-                (
-                    reading.timestamp,
-                    reading.sensor_id,
-                    reading.temperature,
-                    reading.humidity,
-                    reading.pressure,
-                    reading.vibration,
-                    reading.voltage,
-                    reading.status_code,
-                    1 if reading.anomaly_flag else 0,
-                    reading.anomaly_type,
-                    reading.firmware_version,
-                    reading.model,
-                    reading.manufacturer,
-                    reading.location,
-                    reading.latitude,
-                    reading.longitude,
-                    reading.original_timezone,
-                    reading.serial_number,
-                    reading.manufacture_date,
-                    reading.deployment_type,
-                    reading.installation_date,
-                    reading.height_meters,
-                    reading.orientation_degrees,
-                    reading.instance_id,
-                    reading.sensor_type,
-                )
-            )
-
-        # Insert batch
-        cursor.executemany(
-            """
-            INSERT INTO sensor_readings (
-                timestamp, sensor_id, temperature, humidity, pressure,
-                vibration, voltage, status_code, anomaly_flag, anomaly_type,
-                firmware_version, model, manufacturer, location,
-                latitude, longitude, original_timezone,
-                serial_number, manufacture_date, deployment_type,
-                installation_date, height_meters, orientation_degrees,
-                instance_id, sensor_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            batch_data,
-        )
-
-        assert self.conn is not None
-        self.conn.commit()
-
-        count = len(self.batch_buffer)
-        self.insert_count += count
-        self.batch_insert_count += 1
-
-        # Clear buffer and reset timer
-        self.batch_buffer.clear()
-        self.last_batch_time = time.time()
-
-        cursor.close()
-        return count
-
-    def insert_reading(
-        self,
-        sensor_id: str,
-        temperature: float,
-        vibration: float,
-        voltage: float,
-        status_code: int,
-        anomaly_flag: bool = False,
-        anomaly_type: str | None = None,
-        **kwargs,
-    ):
-        """
-        Legacy method for backward compatibility with tests.
-        """
-        reading = SensorReadingSchema(
-            timestamp=datetime.now(UTC).isoformat(),
-            sensor_id=sensor_id,
-            temperature=temperature,
-            vibration=vibration,
-            voltage=voltage,
-            status_code=status_code,
-            anomaly_flag=anomaly_flag,
-            anomaly_type=anomaly_type,
-            **kwargs,
-        )
-        self.store_reading(reading)
-
-    def get_readings(self, limit: int = 100, offset: int = 0) -> list[dict]:
-        """Get readings from the database."""
-        assert self.conn is not None
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM sensor_readings
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-        """,
-            (limit, offset),
-        )
-
-        readings = []
-        for row in cursor.fetchall():
-            readings.append(dict(row))
-
-        cursor.close()
-        return readings
-
-    def get_reading_stats(self) -> dict:
-        """Get basic statistics."""
-        assert self.conn is not None
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM sensor_readings")
-        total = cursor.fetchone()[0]
-
-        cursor.close()
-
-        return {
-            "total_readings": total,
-        }
-
-    def get_database_stats(self) -> dict[str, Any]:
-        """Get comprehensive database statistics."""
-        stats = self.get_reading_stats()
-
-        # Add file size if not in-memory
-        if self.db_path != ":memory:" and Path(self.db_path).exists():
-            stats["database_size_bytes"] = Path(self.db_path).stat().st_size
-            stats["database_size_mb"] = stats["database_size_bytes"] / (1024 * 1024)
-        else:
-            stats["database_size_bytes"] = 0
-            stats["database_size_mb"] = 0
-
-        # Add placeholders for expected fields
-        stats["sensor_stats"] = {}
-        stats["anomaly_stats"] = {}
-
-        # Add performance metrics for compatibility
-        stats["performance_metrics"] = {
-            "total_batches": self.batch_insert_count,
-            "total_inserts": self.insert_count,
-            "avg_batch_size": self.insert_count / max(1, self.batch_insert_count),
-            "avg_insert_time_ms": 0,  # Not tracked in simple version
-        }
-
-        return stats
-
-    def is_healthy(self) -> bool:
-        """Check if database is healthy."""
         try:
-            assert self.conn is not None
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT 1")
-            result = cursor.fetchone()
-            cursor.close()
-            return result is not None and result[0] == 1
-        except Exception:
-            return False
+            # Use executemany for efficient bulk insert
+            self.conn.executemany(
+                """
+                INSERT INTO sensor_readings (
+                    timestamp, sensor_id, temperature, humidity, pressure,
+                    voltage, vibration, status_code, anomaly_flag, anomaly_type,
+                    firmware_version, model, manufacturer, serial_number,
+                    location, latitude, longitude, timezone,
+                    deployment_type, installation_date, height_meters
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                self.batch_buffer,
+            )
+            self.conn.commit()
 
-    def close(self):
-        """Close the database connection."""
-        # Commit any pending data (skip if read-only database)
-        if self.batch_buffer:
-            try:
-                self.commit_batch()
-            except sqlite3.OperationalError as e:
-                if "readonly database" not in str(e):
-                    raise
-                # Ignore read-only errors on close
+            # Checkpoint WAL periodically for Docker volume sync
+            # Do this every 10 commits (roughly every 100 seconds)
+            if not hasattr(self, "_commit_count"):
+                self._commit_count = 0
+            self._commit_count += 1
+
+            if self._commit_count % 10 == 0:
+                try:
+                    self.conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    self.logger.debug(f"WAL checkpoint at commit {self._commit_count}")
+                except Exception as e:
+                    self.logger.warning(f"Periodic WAL checkpoint failed: {e}")
+
+            # Clear the buffer
+            self.batch_buffer = []
+            self.last_commit_time = time.time()
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Failed to commit batch: {e}")
+            raise
+            # Ignore read-only errors on close
+
+        # Checkpoint WAL to ensure data is written to main database file
+        # This is critical for Docker volumes on macOS
+        try:
+            if hasattr(self, "conn") and self.conn:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.logger.info("WAL checkpoint completed")
+        except Exception as e:
+            self.logger.warning(f"WAL checkpoint failed: {e}")
 
         # Close connection
         if self.conn:
@@ -349,6 +243,31 @@ class SensorDatabase:
             self.conn = None
 
         self.logger.info("Database closed")
+
+    def close(self):
+        """Close the database connection properly."""
+        # Commit any pending data
+        if self.batch_buffer:
+            try:
+                self.commit_batch()
+            except sqlite3.OperationalError as e:
+                if "readonly database" not in str(e):
+                    raise
+
+        # Checkpoint WAL to ensure data is written to main database file
+        # This is critical for Docker volumes on macOS/Windows
+        try:
+            if hasattr(self, "conn") and self.conn:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.logger.info("WAL checkpoint completed on close")
+        except Exception as e:
+            self.logger.warning(f"WAL checkpoint failed: {e}")
+
+        # Close the connection
+        if hasattr(self, "conn") and self.conn:
+            self.conn.close()
+            self.conn = None
+            self.logger.info("Database connection closed")
 
     def __del__(self):
         """Cleanup on deletion."""

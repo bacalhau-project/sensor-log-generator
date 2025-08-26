@@ -1,5 +1,12 @@
 # Docker and SQLite WAL Mode - Platform-Specific Guide
 
+## ⚠️ CRITICAL: Data Loss on macOS/Windows
+
+**Docker Desktop on macOS/Windows does NOT properly sync SQLite WAL files!**
+- Container shows correct count (e.g., 4500 records)
+- Host database is missing data (e.g., only 1100 records)
+- **Solution: Use DELETE mode or the macOS-specific compose file**
+
 ## Quick Summary
 
 | Platform | WAL Mode Support | Recommendation |
