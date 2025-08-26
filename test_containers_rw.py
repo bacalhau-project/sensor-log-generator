@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import click
+from rich import box
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
@@ -444,7 +445,8 @@ ENTRYPOINT ["python", "/app/writer.py"]
 
         # Header
         header_text = Text("🐳 Container Database Test - Concurrent Read/Write", style="bold blue")
-        layout["header"].update(Panel(header_text, box=None))
+        header_panel = Panel(header_text, box=box.ROUNDED)
+        layout["header"].update(header_panel)
 
         # Body - split into writer and readers
         layout["body"].split_row(
@@ -453,7 +455,7 @@ ENTRYPOINT ["python", "/app/writer.py"]
         )
 
         # Writer stats
-        writer_table = Table(show_header=False, box=None)
+        writer_table = Table(show_header=False, box=box.SIMPLE)
         writer_table.add_column("Metric", style="cyan")
         writer_table.add_column("Value", style="green")
 
@@ -571,10 +573,24 @@ ENTRYPOINT ["python", "/app/writer.py"]
         # Monitor with live dashboard
         start_time = time.time()
 
-        with Live(self.create_dashboard(), refresh_per_second=2, console=console) as live:
+        try:
+            with Live(self.create_dashboard(), refresh_per_second=2, console=console) as live:
+                while time.time() - start_time < self.test_duration + 2:
+                    try:
+                        dashboard = self.create_dashboard()
+                        live.update(dashboard)
+                    except Exception as e:
+                        console.print(f"[red]Dashboard error: {e}[/red]")
+                        import traceback
+
+                        traceback.print_exc()
+                        break
+                    time.sleep(0.5)
+        except Exception as e:
+            console.print(f"[red]Live display error: {e}[/red]")
+            # Fall back to simple monitoring
             while time.time() - start_time < self.test_duration + 2:
-                live.update(self.create_dashboard())
-                time.sleep(0.5)
+                time.sleep(1)
 
         # Stop containers
         console.print("\n[yellow]Stopping containers...[/yellow]")
