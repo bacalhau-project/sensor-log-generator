@@ -198,7 +198,7 @@ class SensorDatabase:
                     timestamp, sensor_id, temperature, humidity, pressure,
                     voltage, vibration, status_code, anomaly_flag, anomaly_type,
                     firmware_version, model, manufacturer, serial_number,
-                    location, latitude, longitude, timezone,
+                    location, latitude, longitude, original_timezone,
                     deployment_type, installation_date, height_meters
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -282,7 +282,26 @@ class SensorDatabase:
         """Context manager exit."""
         self.close()
 
-    # Compatibility method
+    # Compatibility methods
     def stop_background_commit_thread(self):
         """No-op for compatibility."""
         pass
+
+    def get_database_stats(self) -> dict:
+        """Get database statistics."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM sensor_readings")
+            total = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM sensor_readings WHERE anomaly_flag = 1")
+            anomalies = cursor.fetchone()[0]
+
+            return {
+                "total_readings": total,
+                "anomaly_count": anomalies,
+                "database_size": 0,  # Not calculated for simplicity
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get database stats: {e}")
+            return {"total_readings": 0, "anomaly_count": 0, "database_size": 0}
