@@ -65,25 +65,25 @@ safe_ls data/
 echo -e "\n${YELLOW}Checking if database was created...${NC}"
 if [ -f "data/sensor_data.db" ]; then
   echo -e "${GREEN}${BOLD}SUCCESS!${NC} Database file was created at ${BOLD}data/sensor_data.db${NC}"
-  
+
   # Show some stats about the database
   echo -e "\n${YELLOW}Database statistics:${NC}"
   DB_SIZE=$(du -h data/sensor_data.db | cut -f1)
   RECORD_COUNT=$(sqlite3 data/sensor_data.db "SELECT COUNT(*) FROM sensor_readings" 2>/dev/null || echo "Unable to count records")
-  
+
   echo -e "File size: ${BOLD}$DB_SIZE${NC}"
   echo -e "Number of records: ${BOLD}$RECORD_COUNT${NC}"
-  
+
   # Calculate records per second
   if [ "$RECORD_COUNT" -gt 0 ]; then
     RECORDS_PER_SEC=$(echo "scale=2; $RECORD_COUNT / 30" | bc)
     echo -e "Records per second: ${BOLD}$RECORDS_PER_SEC${NC}"
   fi
-  
+
   # Show a sample of the data
   echo -e "\n${YELLOW}Sample data (first 5 records):${NC}"
   sqlite3 data/sensor_data.db "SELECT * FROM sensor_readings LIMIT 5" 2>/dev/null || echo "Unable to query database"
-  
+
   echo -e "\n${GREEN}${BOLD}TEST PASSED:${NC} Container is working properly and writing to the mounted volume."
 else
   echo -e "${RED}${BOLD}ERROR:${NC} Database file was not created at ${BOLD}data/sensor_data.db${NC}"
@@ -93,4 +93,4 @@ else
   docker logs "$(docker ps -lq)" 2>&1 || echo "Unable to get container logs"
   echo -e "\n${RED}${BOLD}TEST FAILED:${NC} Container did not create the expected database file."
   exit 1
-fi 
+fi

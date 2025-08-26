@@ -22,22 +22,22 @@ TEST_DURATION=30
 # Clean up function
 cleanup() {
     echo -e "\n${YELLOW}Cleaning up...${NC}"
-    
+
     # Kill sensor process if running
     if [ ! -z "$SENSOR_PID" ]; then
         kill $SENSOR_PID 2>/dev/null || true
     fi
-    
+
     # Kill monitor process if running
     if [ ! -z "$MONITOR_PID" ]; then
         kill $MONITOR_PID 2>/dev/null || true
     fi
-    
+
     # Remove test files
     rm -f $TEST_DB $TEST_DB-wal $TEST_DB-shm
     rm -f $SENSOR_CONFIG $SENSOR_IDENTITY
     rm -f test_sensor_data.db test_sensor_data.db-wal test_sensor_data.db-shm
-    
+
     echo "Cleanup complete"
 }
 
@@ -121,7 +121,7 @@ STRESS_CONFIG='{
     "db_path": "'$TEST_DB'"
 }'
 
-python stress_test.py "$STRESS_CONFIG"
+python scripts/testing/stress_test.py "$STRESS_CONFIG"
 STRESS_RESULT=$?
 
 echo -e "\n${GREEN}5. Validating database integrity...${NC}"
@@ -142,7 +142,7 @@ echo -e "\n${GREEN}6. Final database statistics:${NC}"
 sqlite3 $TEST_DB << EOF
 .mode column
 .headers on
-SELECT 
+SELECT
     COUNT(*) as total_readings,
     COUNT(DISTINCT sensor_id) as unique_sensors,
     MIN(timestamp) as first_reading,
@@ -156,10 +156,10 @@ echo -e "\n${GREEN}7. External reader results:${NC}"
 if [ -f monitor.log ]; then
     MONITOR_ERRORS=$(grep -c "Error" monitor.log || true)
     MONITOR_READINGS=$(grep -c "New readings" monitor.log || true)
-    
+
     echo "  Monitor readings received: $MONITOR_READINGS"
     echo "  Monitor errors encountered: $MONITOR_ERRORS"
-    
+
     if [ $MONITOR_ERRORS -eq 0 ]; then
         echo -e "${GREEN}  ✅ No errors in external reader${NC}"
     else

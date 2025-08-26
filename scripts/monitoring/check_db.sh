@@ -16,7 +16,7 @@ echo "📊 Database Summary:"
 sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
-SELECT 
+SELECT
     COUNT(*) as total_readings,
     MIN(timestamp) as first_reading,
     MAX(timestamp) as last_reading,
@@ -30,7 +30,7 @@ echo "🏭 Readings by Manufacturer:"
 sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
-SELECT 
+SELECT
     manufacturer,
     COUNT(*) as count,
     printf('%.2f%%', 100.0 * SUM(anomaly_flag) / COUNT(*)) as anomaly_rate
@@ -43,7 +43,7 @@ echo "⚠️  Anomaly Types:"
 sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
-SELECT 
+SELECT
     COALESCE(anomaly_type, 'Normal') as type,
     COUNT(*) as count
 FROM sensor_readings
@@ -56,7 +56,7 @@ echo "📈 Hourly Statistics:"
 sqlite3 "file:$DB_PATH?mode=ro" <<EOF
 .headers on
 .mode column
-SELECT 
+SELECT
     strftime('%H', timestamp) as hour,
     COUNT(*) as readings,
     printf('%.1f', AVG(temperature)) as avg_temp,

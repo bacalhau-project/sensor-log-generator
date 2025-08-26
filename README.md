@@ -758,6 +758,10 @@ sensor-log-generator/
 │   ├── test_database.py   # Database operation tests
 │   ├── test_anomaly.py    # Anomaly generation tests
 │   └── test_config.py     # Configuration tests
+├── scripts/                # Utility scripts
+│   ├── testing/           # Testing and stress testing tools
+│   ├── readers/           # Database reader utilities
+│   └── monitoring/        # Monitoring and health check scripts
 ├── config/                 # Configuration files
 │   ├── config.yaml        # Main configuration
 │   └── identity.json      # Sensor identity
@@ -844,19 +848,19 @@ Test SQLite database access patterns across Docker container boundaries:
 #### Test Multiple Readers
 ```bash
 # Test with 10 concurrent reader containers
-./test_readers_containerized.py -c 10 -d 60
+uv run scripts/testing/test_readers_containerized.py -c 10 -d 60
 
 # Faster read intervals for stress testing
-./test_readers_containerized.py -c 20 -i 0.1
+uv run scripts/testing/test_readers_containerized.py -c 20 -i 0.1
 ```
 
 #### Test Read/Write Concurrency
 ```bash
 # 1 writer + 5 readers for 60 seconds
-./test_containers_rw.py -r 5 -w 30 -d 60
+uv run scripts/testing/test_containers_rw.py -r 5 -w 30 -d 60
 
 # High-throughput test
-./test_containers_rw.py -r 10 -w 100 -d 120
+uv run scripts/testing/test_containers_rw.py -r 10 -w 100 -d 120
 ```
 
 These tools validate:

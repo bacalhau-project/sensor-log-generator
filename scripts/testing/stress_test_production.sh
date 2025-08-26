@@ -144,7 +144,7 @@ echo "Starting container with periodic restarts..."
 
 for i in {1..3}; do
     echo -e "\n${YELLOW}Iteration $i/3${NC}"
-    
+
     docker run -d \
         --name $CONTAINER_NAME \
         -v "$(pwd)/$DATA_DIR":/app/data \
@@ -153,12 +153,12 @@ for i in {1..3}; do
         -e IDENTITY_FILE=/app/config/$IDENTITY_FILE \
         -e DEBUG_MODE=true \
         ghcr.io/bacalhau-project/sensor-log-generator:latest
-    
+
     sleep 10
     echo -e "${RED}Killing container abruptly...${NC}"
     docker kill $CONTAINER_NAME
     docker rm $CONTAINER_NAME
-    
+
     COUNT=$(get_db_stats)
     echo -e "Readings after kill $i: ${GREEN}$COUNT${NC}"
     sleep 2

@@ -92,6 +92,8 @@ test_*.db-journal
 test_*.db-wal
 test_*.db-shm
 test_*.db.lock
+test_*.sqlite
+test_*.log
 debug_*.db
 multiprocess_*.db
 multiprocess_*.db.lock
@@ -106,6 +108,7 @@ multiprocess_*.db.lock
 .env
 .env.*
 .envrc
+.env.build
 !.env.example
 
 # Documentation artifacts

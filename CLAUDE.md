@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run with Docker (DELETE mode for Mac/Windows): `docker run -v $(pwd)/data:/app/data -e SENSOR_WAL=false sensor-simulator`
 - Run directly: `uv run main.py --config config.yaml --identity node_identity.json`
 - Generate identity template: `uv run main.py --generate-identity`
-- Build multi-platform images: `./build.sh`
-- Test container: `./test_container.sh`
+- Build multi-platform images: `uv run build.py`
+- Test container: `uv run scripts/testing/test_container.sh`
 - Run tests: `uv run pytest tests/`
+- Test concurrent readers: `uv run scripts/testing/test_readers.py`
+- Test containerized read/write: `uv run scripts/testing/test_containers_rw.py`
 - Keep existing database on startup: `docker run -v $(pwd)/data:/app/data -e PRESERVE_EXISTING_DB=true sensor-simulator`
 
 ## Database Modes
@@ -64,6 +66,17 @@ The system uses a nested identity format:
   }
 }
 ```
+
+## Project Organization
+- **src/** - Core application modules (simulator, database, anomaly, etc.)
+- **tests/** - Unit and integration tests
+- **scripts/** - Utility scripts organized by function:
+  - **testing/** - Test scripts for stress testing, concurrent readers, containers
+  - **readers/** - Database reader utilities and examples
+  - **monitoring/** - System health and database monitoring scripts
+- **config/** - Configuration files (config.yaml, node-identity.json)
+- **data/** - Database files (auto-created)
+- **logs/** - Application logs (auto-created)
 
 ## Important Configuration Notes
 - **Dynamic reloading is now required** - monitoring and dynamic_reloading are automatically enabled
