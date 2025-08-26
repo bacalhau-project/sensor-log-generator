@@ -4,17 +4,11 @@
 
 ### Running the Simulator
 ```bash
-# Run directly (creates new database by default)
+# Run directly (ALWAYS creates new database - this is correct!)
 uv run main.py
 
-# Run and preserve existing database
-PRESERVE_EXISTING_DB=true uv run main.py
-
-# Run with Docker
+# Run with Docker (creates new database)
 docker run -v $(pwd)/data:/app/data sensor-simulator
-
-# Run with Docker preserving database
-docker run -v $(pwd)/data:/app/data -e PRESERVE_EXISTING_DB=true sensor-simulator
 
 # Generate identity file
 uv run main.py --generate-identity > config/node-identity.json

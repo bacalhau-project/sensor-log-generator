@@ -18,12 +18,19 @@ The sensor simulator (`main.py`) is the ONLY source of truth for writing sensor 
 ### ✅ CORRECT: Test Readers Against Live Sensor
 
 ```bash
-# Start the real sensor in one terminal
-uv run main.py
+# Start the real sensor in one terminal (ALWAYS start fresh)
+uv run main.py  # Creates new database - this is correct!
 
-# In another terminal, test readers
+# In another terminal, test readers (always read-only)
 uv run scripts/testing/test_readers.py -r 10
 ```
+
+### ⚠️ CRITICAL: Never Use PRESERVE_EXISTING_DB
+
+- **ALWAYS let the sensor create a fresh database**
+- Old databases may have schema differences
+- Mixing schemas causes corruption
+- Test readers ALWAYS use `mode=ro` for safety
 
 ### ❌ WRONG: Mock Data Generation
 
