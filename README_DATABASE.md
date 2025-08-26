@@ -83,7 +83,7 @@ We provide a dedicated reader example that safely reads from the database:
 
 ```bash
 # Use the provided reader example
-./reader_example.py
+uv run scripts/readers/reader_example.py
 
 # Output shows safe reading patterns
 Connected to database (read-only): data/sensor_data.db
@@ -99,13 +99,13 @@ Use our concurrent reader test scripts to verify database performance:
 
 ```bash
 # Python version with rich UI (recommended)
-./test_readers.py                    # 10 readers for 30 seconds
-./test_readers.py -r 50 -t 60       # 50 readers for 60 seconds
-./test_readers.py --check-writes    # Check if DB is being written to
+uv run scripts/testing/test_readers.py                    # 10 readers for 30 seconds
+uv run scripts/testing/test_readers.py -r 50 -t 60       # 50 readers for 60 seconds
+uv run scripts/testing/test_readers.py --check-writes    # Check if DB is being written to
 
 # Bash version for quick testing
-./test_readers.sh
-NUM_READERS=20 DURATION=60 ./test_readers.sh
+./scripts/testing/test_readers.sh
+NUM_READERS=20 DURATION=60 ./scripts/testing/test_readers.sh
 ```
 
 The test scripts:
@@ -141,8 +141,8 @@ With the simplified database architecture:
 
 4. **Use provided scripts** for reading and testing
    ```bash
-   ./reader_example.py     # Safe reading example
-   ./test_readers.py       # Concurrent reader testing
+   uv run scripts/readers/reader_example.py     # Safe reading example
+   uv run scripts/testing/test_readers.py       # Concurrent reader testing
    ```
 
 ### ❌ DON'T

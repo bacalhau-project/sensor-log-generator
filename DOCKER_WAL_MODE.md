@@ -76,14 +76,14 @@ sqlite3 data/sensor_data.db "SELECT COUNT(*) FROM sensor_readings;"
 ### Comprehensive Test Suite
 
 ```bash
-# Run automated Docker WAL tests
-./test_docker_wal.sh
+# Test container functionality
+uv run scripts/testing/test_container.sh
 
-# Or use Python test suite
-uv run test_docker_wal_issues.py
+# Test containerized readers
+uv run scripts/testing/test_readers_containerized.py
 
-# Or use docker-compose tests
-docker-compose -f docker-compose.test-wal.yml up
+# Test concurrent read/write in containers
+uv run scripts/testing/test_containers_rw.py
 ```
 
 ## Common Issues and Solutions
@@ -104,7 +104,7 @@ docker run -v $(pwd)/data:/app/data sensor-simulator
 
 **Cause**: File synchronization issues with Docker volumes
 
-**Solution**: 
+**Solution**:
 - Use DELETE mode for cross-boundary access
 - Or use named volumes for container-only access
 
@@ -173,7 +173,7 @@ services:
     # No SENSOR_WAL
     volumes:
       - ./data:/app/data
-  
+
   reader:
     image: your-reader
     volumes:

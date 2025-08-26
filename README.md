@@ -198,10 +198,10 @@ uv run scripts/check.py --fix
 docker build -t sensor-simulator .
 
 # Build multi-platform (AMD64 + ARM64)
-./build.py
+uv run build.py
 
 # Test the container
-./test_container.sh
+uv run scripts/testing/test_container.sh
 ```
 
 ### Development Workflow
@@ -439,7 +439,7 @@ python read_sensor_data.py
 ./reader_example.py
 
 # Test concurrent reading performance
-./test_readers.py -r 20 -t 30  # 20 readers for 30 seconds
+uv run scripts/testing/test_readers.py -r 20 -t 30  # 20 readers for 30 seconds
 ```
 
 ### Database Architecture
@@ -896,7 +896,7 @@ docker build -t sensor-simulator .
 ./build.py
 
 # Test the build
-./test_container.sh
+uv run scripts/testing/test_container.sh
 ```
 
 ### Adding Features

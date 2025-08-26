@@ -12,13 +12,13 @@ Tests multiple Docker containers reading from the same SQLite database.
 **Usage**:
 ```bash
 # Test with 3 reader containers for 30 seconds
-./test_readers_containerized.py
+uv run scripts/testing/test_readers_containerized.py
 
 # Test with 5 containers reading every 0.2 seconds
-./test_readers_containerized.py -c 5 -i 0.2
+uv run scripts/testing/test_readers_containerized.py -c 5 -i 0.2
 
 # Use existing database
-./test_readers_containerized.py -p data/sensor_data.db
+uv run scripts/testing/test_readers_containerized.py -p data/sensor_data.db
 ```
 
 **What it does**:
@@ -36,13 +36,13 @@ Tests concurrent read/write operations across containers.
 **Usage**:
 ```bash
 # Default: 1 writer + 3 readers for 30 seconds
-./test_containers_rw.py
+uv run scripts/testing/test_containers_rw.py
 
 # Higher write rate with more readers
-./test_containers_rw.py -r 5 -w 20
+uv run scripts/testing/test_containers_rw.py -r 5 -w 20
 
 # Longer test with faster reads
-./test_containers_rw.py -d 60 -i 0.2
+uv run scripts/testing/test_containers_rw.py -d 60 -i 0.2
 ```
 
 **What it does**:
@@ -105,7 +105,7 @@ Tests concurrent read/write operations across containers.
 ```bash
 # Test with increasing reader count
 for readers in 1 2 5 10 20; do
-    ./test_readers_containerized.py -c $readers -d 10
+    uv run scripts/testing/test_readers_containerized.py -c $readers -d 10
 done
 ```
 
@@ -113,14 +113,14 @@ done
 ```bash
 # Test with varying write rates
 for rate in 10 50 100 200; do
-    ./test_containers_rw.py -w $rate -d 20
+    uv run scripts/testing/test_containers_rw.py -w $rate -d 20
 done
 ```
 
 ### Scenario 3: Production Simulation
 ```bash
 # Long-running test with realistic rates
-./test_containers_rw.py -r 10 -w 30 -d 300 -i 1.0
+uv run scripts/testing/test_containers_rw.py -r 10 -w 30 -d 300 -i 1.0
 ```
 
 ## Monitoring
