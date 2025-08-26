@@ -2,7 +2,7 @@
 version: 1
 
 simulation:
-  readings_per_second: 3
+  readings_per_second: 30
   run_time_seconds: 360000 # 100 hours
 
 normal_parameters:
