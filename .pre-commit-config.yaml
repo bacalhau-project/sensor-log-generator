@@ -4,14 +4,14 @@ default_stages: [pre-commit]
 repos:
   # Python syntax check (fastest, runs first)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-ast
         name: Check Python syntax
 
   # Ruff - Auto-fix formatting and basic linting issues
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.12.10
     hooks:
       - id: ruff
         name: Ruff auto-fix
@@ -21,7 +21,7 @@ repos:
 
   # Basic file checks (fast)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -56,7 +56,7 @@ repos:
 
   # Type checking (run on every commit)
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v1.17.1
     hooks:
       - id: mypy
         name: Type checking
@@ -83,7 +83,7 @@ repos:
 
   # Security (push only)
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
+    rev: 1.8.6
     hooks:
       - id: bandit
         name: Security scan

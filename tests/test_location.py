@@ -194,9 +194,9 @@ class TestLocationGenerator(unittest.TestCase):
         base_lat = generator.cities[city]["latitude"]
         base_lon = generator.cities[city]["longitude"]
         if config["gps_variation"] > 0:
-            assert (
-                lat != base_lat or lon != base_lon or (base_lat == 0 and base_lon == 0)
-            ), "GPS variation should alter coordinates unless base is (0,0) and offset is also 0."
+            assert lat != base_lat or lon != base_lon or (base_lat == 0 and base_lon == 0), (
+                "GPS variation should alter coordinates unless base is (0,0) and offset is also 0."
+            )
         else:
             assert lat == base_lat
             assert lon == base_lon
