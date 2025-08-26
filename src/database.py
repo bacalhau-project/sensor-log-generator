@@ -6,7 +6,9 @@ No threading, no complexity, just works.
 import contextlib
 import sqlite3
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -188,9 +190,12 @@ class SensorDatabase:
     def commit_batch(self):
         """Commit the current batch of readings to the database."""
         if not self.batch_buffer:
-            return
+            return 0
 
         try:
+            # Store count before clearing buffer
+            count = len(self.batch_buffer)
+
             # Use executemany for efficient bulk insert
             self.conn.executemany(
                 """
@@ -222,6 +227,9 @@ class SensorDatabase:
             # Clear the buffer
             self.batch_buffer = []
             self.last_commit_time = time.time()
+
+            # Return the count of committed records
+            return count
 
         except sqlite3.Error as e:
             self.logger.error(f"Failed to commit batch: {e}")
@@ -282,7 +290,90 @@ class SensorDatabase:
         """Context manager exit."""
         self.close()
 
-    # Compatibility methods
+    # Compatibility methods for tests
+    def insert_reading(self, reading=None, **kwargs: Any):
+        """Compatibility method - calls store_reading."""
+        if reading is None and kwargs:
+            # Create a reading from kwargs for test compatibility
+            # Add defaults for missing fields
+            defaults: dict[str, Any] = {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "sensor_id": "TEST001",
+                "temperature": 0.0,
+                "humidity": 0.0,
+                "pressure": 0.0,
+                "voltage": 0.0,
+                "vibration": 0.0,
+                "status_code": 0,
+                "anomaly_flag": False,
+                "anomaly_type": None,
+                "firmware_version": None,
+                "model": None,
+                "manufacturer": None,
+                "location": None,
+                "original_timezone": None,
+            }
+            defaults.update(kwargs)
+            # Type conversion to ensure proper types for SensorReadingSchema
+            reading = SensorReadingSchema(
+                timestamp=str(defaults["timestamp"]),
+                sensor_id=str(defaults["sensor_id"]),
+                temperature=float(defaults["temperature"] or 0.0),
+                humidity=float(defaults.get("humidity") or 0.0),
+                pressure=float(defaults.get("pressure") or 0.0),
+                voltage=float(defaults.get("voltage") or 0.0),
+                vibration=float(defaults.get("vibration") or 0.0),
+                status_code=int(defaults["status_code"] or 0),
+                anomaly_flag=bool(defaults["anomaly_flag"]),
+                anomaly_type=str(defaults.get("anomaly_type"))
+                if defaults.get("anomaly_type")
+                else None,
+                firmware_version=str(defaults.get("firmware_version"))
+                if defaults.get("firmware_version")
+                else None,
+                model=str(defaults.get("model")) if defaults.get("model") else None,
+                manufacturer=str(defaults.get("manufacturer"))
+                if defaults.get("manufacturer")
+                else None,
+                location=str(defaults.get("location")) if defaults.get("location") else None,
+                original_timezone=str(defaults.get("original_timezone"))
+                if defaults.get("original_timezone")
+                else None,
+            )
+        return self.store_reading(reading)
+
+    def is_healthy(self) -> bool:
+        """Check if database connection is healthy."""
+        try:
+            if not self.conn:
+                return False
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            return True
+        except Exception:
+            return False
+
+    def get_readings(self, limit: int | None = None) -> list:
+        """Get sensor readings from the database."""
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT * FROM sensor_readings ORDER BY timestamp DESC"
+            if limit:
+                query += f" LIMIT {limit}"
+            cursor.execute(query)
+
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row, strict=False)) for row in rows]
+        except Exception as e:
+            self.logger.error(f"Failed to get readings: {e}")
+            return []
+
+    def get_reading_stats(self) -> dict:
+        """Get reading statistics (compatibility method)."""
+        return self.get_database_stats()
+
     def stop_background_commit_thread(self):
         """No-op for compatibility."""
         pass
@@ -297,11 +388,52 @@ class SensorDatabase:
             cursor.execute("SELECT COUNT(*) FROM sensor_readings WHERE anomaly_flag = 1")
             anomalies = cursor.fetchone()[0]
 
+            # Calculate database size
+            db_size_mb = 0.0
+            if self.db_path != ":memory:" and Path(self.db_path).exists():
+                db_size = Path(self.db_path).stat().st_size
+                db_size_mb = float(db_size) / (1024 * 1024)  # Convert to MB
+            elif self.db_path != ":memory:" and total > 0:
+                # For file database when file doesn't exist yet, estimate based on records
+                # Rough estimate: ~200 bytes per record
+                db_size_mb = float(total * 200) / (1024 * 1024)
+            # For in-memory database, size stays 0
+
+            # Calculate performance metrics
+            total_batches = getattr(self, "_commit_count", 0)
+            total_inserts = total
+            avg_batch_size = total_inserts / max(total_batches, 1)
+
             return {
                 "total_readings": total,
                 "anomaly_count": anomalies,
-                "database_size": 0,  # Not calculated for simplicity
+                "database_size": db_size_mb * 1024 * 1024,  # In bytes for backward compat
+                "database_size_mb": db_size_mb,
+                "sensor_stats": {},  # Not tracking individual sensor stats
+                "anomaly_stats": {
+                    "total": anomalies,
+                    "percentage": (anomalies / max(total, 1)) * 100,
+                },
+                "performance_metrics": {
+                    "total_batches": total_batches,
+                    "total_inserts": total_inserts,
+                    "avg_batch_size": avg_batch_size,
+                    "avg_insert_time_ms": 0.0,  # Not tracking this
+                },
             }
         except Exception as e:
             self.logger.error(f"Failed to get database stats: {e}")
-            return {"total_readings": 0, "anomaly_count": 0, "database_size": 0}
+            return {
+                "total_readings": 0,
+                "anomaly_count": 0,
+                "database_size": 0,
+                "database_size_mb": 0,
+                "sensor_stats": {},
+                "anomaly_stats": {"total": 0, "percentage": 0},
+                "performance_metrics": {
+                    "total_batches": 0,
+                    "total_inserts": 0,
+                    "avg_batch_size": 0,
+                    "avg_insert_time_ms": 0.0,
+                },
+            }

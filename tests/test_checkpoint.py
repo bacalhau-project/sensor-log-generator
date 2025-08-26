@@ -250,7 +250,7 @@ class TestDatabaseCheckpointing:
                 original_timezone=f"+0{i}:00",
             )
             valid_readings.append(reading)
-            db.store_reading(reading)
+            db.insert_reading(reading)
 
         # Force checkpoint
         db.commit_batch()

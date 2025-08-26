@@ -55,7 +55,7 @@ class TestSensorDatabase:
         assert len(readings) == 0
         db2.close()
 
-    def test_store_reading(self):
+    def test_insert_reading(self):
         """Test storing a reading using Pydantic schema."""
         db = SensorDatabase(self.db_path)
 
@@ -71,7 +71,7 @@ class TestSensorDatabase:
             anomaly_flag=False,
         )
 
-        db.store_reading(reading)
+        db.insert_reading(reading)
         db.commit_batch()
 
         readings = db.get_readings()
