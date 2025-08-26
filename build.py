@@ -66,6 +66,12 @@ class DockerComposeBuilder:
 
     def _get_default_image_name(self) -> str:
         """Get image name from git repository or current directory"""
+        # First, check if we're in GitHub Actions
+        github_repo = os.environ.get("GITHUB_REPOSITORY")
+        if github_repo:
+            # In GitHub Actions, use the repository name directly
+            return github_repo.lower()
+
         try:
             # Get git remote URL
             result = self._run_command(
@@ -236,8 +242,29 @@ class DockerComposeBuilder:
         console.print(f"[green]✓[/green] Created {self.compose_file}")
 
     def check_docker_login(self):
-        """Check and perform Docker registry login"""
-        if not self.require_login or self.skip_push:
+        """Check if user is logged into Docker registry"""
+        if not self.require_login:
+            console.print("[yellow]Skipping Docker login check[/yellow]")
+            return
+
+        # Check if we're in CI
+        if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+            console.print(
+                "[blue]Running in CI environment, assuming authentication is handled[/blue]"
+            )
+            # Warn if trying to push to a repository that might not be accessible
+            if "bacalhau-project" in self.image_name and not os.environ.get(
+                "GITHUB_REPOSITORY", ""
+            ).startswith("bacalhau-project"):
+                console.print(
+                    f"[bold yellow]⚠️  Warning: Attempting to push to {self.registry}/{self.image_name}[/bold yellow]"
+                )
+                console.print(
+                    "[yellow]   You may not have write access to this repository.[/yellow]"
+                )
+                console.print(
+                    "[yellow]   Consider using --image-name with your own repository.[/yellow]"
+                )
             return
 
         console.print("[blue]Checking Docker registry login...[/blue]")
