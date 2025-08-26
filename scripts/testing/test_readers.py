@@ -13,6 +13,7 @@ This script only reads from the database - it doesn't start the sensor simulator
 """
 
 import multiprocessing
+import signal
 import sqlite3
 import time
 from pathlib import Path
@@ -42,6 +43,9 @@ def reader_process(
         interval: Time between reads (seconds)
         results_queue: Queue to report results
     """
+    # Ignore keyboard interrupts in child processes
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     start_time = time.time()
     read_count = 0
     error_count = 0
@@ -96,11 +100,16 @@ def reader_process(
                 }
             )
 
-        except Exception as e:
+        except Exception:
             error_count += 1
-            console.print(f"[red]Reader {reader_id} error: {e}[/red]")
+            # Don't print in child processes to avoid output mess
+            pass
 
-        time.sleep(interval)
+        try:
+            time.sleep(interval)
+        except (KeyboardInterrupt, SystemExit):
+            # Gracefully handle interrupts during sleep
+            break
 
     # Final report
     results_queue.put(
@@ -353,12 +362,27 @@ def main(
         monitor_readers(results_queue, readers, duration)
     except KeyboardInterrupt:
         console.print("\n[yellow]Test interrupted by user[/yellow]")
+    finally:
+        # Terminate all processes gracefully
+        for p in processes:
+            if p.is_alive():
+                p.terminate()
 
-    # Wait for all processes to complete
-    for p in processes:
-        p.join(timeout=1)
-        if p.is_alive():
-            p.terminate()
+        # Give them a moment to terminate
+        time.sleep(0.5)
+
+        # Force kill any remaining
+        for p in processes:
+            if p.is_alive():
+                p.kill()
+                p.join(timeout=0.5)
+
+    # Clean up the queue
+    try:
+        while not results_queue.empty():
+            results_queue.get_nowait()
+    except Exception:
+        pass
 
     console.print("\n[bold green]✓ Test complete![/bold green]")
     return 0
