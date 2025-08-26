@@ -50,6 +50,7 @@ def reader_process(
     read_count = 0
     error_count = 0
     last_count = 0
+    last_id = None
 
     while time.time() - start_time < duration:
         try:
@@ -73,13 +74,14 @@ def reader_process(
             conn.close()
 
             read_count += 1
+            latest_id = latest[0] if latest else None
 
             # Report progress
             results_queue.put(
                 {
                     "reader_id": reader_id,
                     "count": count,
-                    "latest_id": latest[0] if latest else None,
+                    "latest_id": latest_id,
                     "latest_temp": latest[3] if latest else None,
                     "reads": read_count,
                     "errors": error_count,
@@ -88,6 +90,7 @@ def reader_process(
             )
 
             last_count = count
+            last_id = latest_id
 
         except sqlite3.OperationalError as e:
             error_count += 1
@@ -116,8 +119,12 @@ def reader_process(
         {
             "reader_id": reader_id,
             "final": True,
+            "reads": read_count,
+            "errors": error_count,
             "total_reads": read_count,
             "total_errors": error_count,
+            "count": last_count,
+            "latest_id": last_id,
             "duration": time.time() - start_time,
         }
     )
