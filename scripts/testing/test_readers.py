@@ -12,6 +12,7 @@ Test concurrent readers against an existing sensor database.
 This script only reads from the database - it doesn't start the sensor simulator.
 """
 
+import datetime
 import multiprocessing
 import signal
 import sqlite3
@@ -32,6 +33,7 @@ def reader_process(
     duration: int,
     interval: float,
     results_queue: multiprocessing.Queue,
+    debug: bool = False,
 ):
     """
     Individual reader process that queries the database.
@@ -94,19 +96,36 @@ def reader_process(
 
         except sqlite3.OperationalError as e:
             error_count += 1
+            error_msg = str(e)
+            # Add context to common errors
+            if "database is locked" in error_msg:
+                error_msg = f"Database locked (read #{read_count})"
+            elif "no such table" in error_msg:
+                error_msg = f"Table missing: {error_msg}"
+            elif "database disk image is malformed" in error_msg:
+                error_msg = "DATABASE CORRUPTED - disk image malformed"
+            elif "file is not a database" in error_msg:
+                error_msg = "DATABASE CORRUPTED - invalid file"
             results_queue.put(
                 {
                     "reader_id": reader_id,
-                    "error": str(e),
+                    "error": error_msg,
                     "reads": read_count,
                     "errors": error_count,
                 }
             )
 
-        except Exception:
+        except Exception as e:
             error_count += 1
-            # Don't print in child processes to avoid output mess
-            pass
+            # Send general exceptions to queue too
+            results_queue.put(
+                {
+                    "reader_id": reader_id,
+                    "error": f"Unexpected error: {type(e).__name__}: {str(e)}",
+                    "reads": read_count,
+                    "errors": error_count,
+                }
+            )
 
         try:
             time.sleep(interval)
@@ -146,6 +165,7 @@ def monitor_readers(
     reader_stats = {}
     start_time = time.time()
     completed_readers = 0
+    error_log = []  # Track all errors for display
 
     def create_table():
         """Create a status table for display"""
@@ -210,6 +230,10 @@ def monitor_readers(
                 if result.get("final"):
                     completed_readers += 1
 
+                # Capture error messages
+                if result.get("error"):
+                    error_log.append(f"Reader #{reader_id}: {result.get('error')}")
+
                 reader_stats[reader_id] = result
                 live.update(create_table())
 
@@ -235,6 +259,30 @@ def monitor_readers(
     summary.add_row("Test Duration", f"{duration} seconds")
 
     console.print(summary)
+
+    # Display any errors that occurred
+    if error_log:
+        console.print("\n[red]Errors encountered:[/red]")
+        # Group errors by type
+        error_counts = {}
+        for error in error_log:
+            # Extract error type from message
+            if "DATABASE CORRUPTED" in error:
+                key = "DATABASE CORRUPTED"
+            elif "Database locked" in error:
+                key = "Database locked"
+            elif "Table missing" in error:
+                key = "Table missing"
+            else:
+                key = error.split(": ", 1)[1] if ": " in error else error
+            error_counts[key] = error_counts.get(key, 0) + 1
+
+        # Display error summary
+        for error_type, count in sorted(error_counts.items(), key=lambda x: -x[1])[:5]:
+            console.print(f"  • {error_type}: {count} occurrences")
+
+        if len(error_counts) > 5:
+            console.print(f"  ... and {len(error_counts) - 5} other error types")
 
 
 @click.command()
@@ -271,12 +319,18 @@ def monitor_readers(
     is_flag=True,
     help="Check if database is being written to",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Write detailed debug log to test_readers_debug.log",
+)
 def main(
     database: str,
     readers: int,
     duration: int,
     interval: float,
     check_writes: bool,
+    debug: bool,
 ):
     """
     Test concurrent readers against an existing sensor database.
@@ -350,16 +404,27 @@ def main(
     console.print(f"  • Readers: {readers}")
     console.print(f"  • Duration: {duration} seconds")
     console.print(f"  • Read interval: {interval} seconds")
+    if debug:
+        console.print("  • Debug logging: [yellow]ENABLED[/yellow] (see test_readers_debug.log)")
     console.print("")
 
     # Create results queue
     results_queue = multiprocessing.Queue()
 
+    # Set up debug logging if requested
+    debug_file = None
+    if debug:
+        debug_file = open("test_readers_debug.log", "w")
+        debug_file.write(f"Test started at {datetime.datetime.now()}\n")
+        debug_file.write(f"Database: {database}\n")
+        debug_file.write(f"Readers: {readers}, Duration: {duration}s, Interval: {interval}s\n\n")
+        debug_file.flush()
+
     # Start reader processes
     processes = []
     for i in range(readers):
         p = multiprocessing.Process(
-            target=reader_process, args=(database, i, duration, interval, results_queue)
+            target=reader_process, args=(database, i, duration, interval, results_queue, debug)
         )
         p.start()
         processes.append(p)
@@ -392,6 +457,13 @@ def main(
         pass
 
     console.print("\n[bold green]✓ Test complete![/bold green]")
+
+    # Close debug file if open
+    if debug_file:
+        debug_file.write(f"\nTest completed at {datetime.datetime.now()}\n")
+        debug_file.close()
+        console.print("[dim]Debug log saved to test_readers_debug.log[/dim]")
+
     return 0
 
 
