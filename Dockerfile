@@ -1,7 +1,5 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
 
-RUN mkdir -p /app
-
 WORKDIR /app
 
 # Set environment variables for uv
@@ -14,12 +12,10 @@ ENV UV_LINK_MODE=copy
 COPY pyproject.toml README.md ./
 COPY uv.lock* .
 
-# Install Python 3.12 and create virtual environment
-RUN uv python install 3.12
-RUN uv venv /.venv --python 3.12
-
-# Install dependencies and compile bytecode
-RUN uv sync --frozen --compile-bytecode
+# Install Python 3.12, create virtual environment, and install dependencies
+RUN uv python install 3.12 && \
+    uv venv /.venv --python 3.12 && \
+    uv sync --frozen --compile-bytecode
 
 # Copy application code
 COPY main.py .
