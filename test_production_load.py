@@ -82,10 +82,10 @@ def reader_process(db_path: str, reader_id: int, duration: int, results_queue):
                     LIMIT 100
                 """)
             elif total_reads % 3 == 1:
-                # Get unsynced readings
+                # Get recent readings
                 cursor.execute("""
                     SELECT * FROM sensor_readings
-                    WHERE synced = 0
+                    ORDER BY id DESC
                     LIMIT 50
                 """)
             else:

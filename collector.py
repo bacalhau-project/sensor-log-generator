@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
+DEPRECATED: This collector utility relies on the 'synced' column which has been removed.
+
 Data collector utility for aggregating sensor data from multiple databases.
 This is a separate tool for collecting and centralizing data from distributed sensors.
 Not required for basic sensor simulation - only needed for multi-sensor deployments.
+
+NOTE: The 'synced' column has been removed from the database schema.
+External tools should track their own sync state separately from the sensor database.
 """
 
 import argparse

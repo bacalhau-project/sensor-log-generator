@@ -66,10 +66,6 @@ def reader_process(
             """)
             latest = cursor.fetchone()
 
-            # Get unsynced count
-            cursor.execute("SELECT COUNT(*) FROM sensor_readings WHERE synced = 0")
-            unsynced = cursor.fetchone()[0]
-
             conn.close()
 
             read_count += 1
@@ -79,7 +75,6 @@ def reader_process(
                 {
                     "reader_id": reader_id,
                     "count": count,
-                    "unsynced": unsynced,
                     "latest_id": latest[0] if latest else None,
                     "latest_temp": latest[3] if latest else None,
                     "reads": read_count,
@@ -140,10 +135,9 @@ def monitor_readers(
         """Create a status table for display"""
         table = Table(title="Concurrent Database Readers", show_header=True)
         table.add_column("Reader", style="cyan", width=8)
-        table.add_column("Reads", style="green", justify="right", width=8)
+        table.add_column("Reads", style="yellow", justify="right", width=8)
         table.add_column("Errors", style="red", justify="right", width=8)
-        table.add_column("DB Count", style="yellow", justify="right", width=10)
-        table.add_column("Unsynced", style="magenta", justify="right", width=10)
+        table.add_column("Records", style="white", justify="right", width=10)
         table.add_column("Latest ID", style="blue", justify="right", width=10)
         table.add_column("New/sec", style="green", justify="right", width=8)
         table.add_column("Status", style="white", width=15)
@@ -164,15 +158,12 @@ def monitor_readers(
                     str(stats.get("reads", 0)),
                     str(stats.get("errors", 0)),
                     str(stats.get("count", "-")),
-                    str(stats.get("unsynced", "-")),
                     str(stats.get("latest_id", "-")),
                     f"{stats.get('new_records', 0):.1f}",
                     status,
                 )
             else:
-                table.add_row(
-                    f"#{reader_id}", "0", "0", "-", "-", "-", "0.0", "[dim]Starting...[/dim]"
-                )
+                table.add_row(f"#{reader_id}", "0", "0", "-", "-", "0.0", "[dim]Starting...[/dim]")
 
         # Add summary row
         table.add_row(

@@ -951,7 +951,6 @@ class SensorSimulator:
             "location": self.city_name,
             "latitude": self.latitude,
             "longitude": self.longitude,
-            "synced": False,
         }
 
         # Check for anomalies (AnomalyGenerator uses current config and identity)

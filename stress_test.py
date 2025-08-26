@@ -81,8 +81,7 @@ def setup_database(db_path: str):
             model TEXT,
             manufacturer TEXT,
             location TEXT,
-            original_timezone TEXT,
-            synced INTEGER DEFAULT 0
+            original_timezone TEXT
         )
     """)
     conn.commit()
@@ -128,7 +127,6 @@ def writer_process(
                     "TestCorp",
                     f"Location_{process_id}",
                     "+00:00",
-                    0,  # Not synced
                 )
 
                 batch.append(reading)
@@ -146,8 +144,8 @@ def writer_process(
                         INSERT INTO sensor_readings
                         (timestamp, sensor_id, temperature, vibration, voltage,
                          status_code, anomaly_flag, anomaly_type, firmware_version,
-                         model, manufacturer, location, original_timezone, synced)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         model, manufacturer, location, original_timezone)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                         batch,
                     )
@@ -181,8 +179,8 @@ def writer_process(
                     INSERT INTO sensor_readings
                     (timestamp, sensor_id, temperature, vibration, voltage,
                      status_code, anomaly_flag, anomaly_type, firmware_version,
-                     model, manufacturer, location, original_timezone, synced)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     model, manufacturer, location, original_timezone)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     batch,
                 )
