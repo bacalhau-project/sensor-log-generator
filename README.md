@@ -48,6 +48,7 @@ Test your detection systems with five anomaly patterns:
 - **📡 HTTP monitoring**: Real-time metrics and health check endpoints
 - **🏷️ Semantic versioning**: Multi-platform Docker images with proper versioning
 - **🔐 Checkpoint system**: Resume from last state after restarts
+- **🐳 Container testing tools**: Validate SQLite behavior across Docker boundaries
 - **📝 Flexible identity**: Support for legacy and enhanced sensor metadata
 
 ## 🎯 Common Use Cases
@@ -835,6 +836,51 @@ uv run pytest tests/ --cov=src
 # Run specific test
 uv run pytest tests/test_simulator.py
 ```
+
+### Containerized Database Testing
+
+Test SQLite database access patterns across Docker container boundaries:
+
+#### Test Multiple Readers
+```bash
+# Test with 10 concurrent reader containers
+./test_readers_containerized.py -c 10 -d 60
+
+# Faster read intervals for stress testing
+./test_readers_containerized.py -c 20 -i 0.1
+```
+
+#### Test Read/Write Concurrency
+```bash
+# 1 writer + 5 readers for 60 seconds
+./test_containers_rw.py -r 5 -w 30 -d 60
+
+# High-throughput test
+./test_containers_rw.py -r 10 -w 100 -d 120
+```
+
+These tools validate:
+- **WAL mode compatibility** across container boundaries
+- **Concurrent read/write** performance
+- **File locking behavior** in containerized environments
+- **Mount permission** safety (read-only vs read-write)
+
+Example output from a 60-second test with 10 readers and 50 writes/sec:
+```
+Final Test Results
+┌──────────────────────┬───────────┐
+│ Test Duration        │ 60s       │
+│ Total Writes         │ 2,694     │
+│ Write Errors         │ 0         │
+│ Avg Write Time       │ 1.92ms    │
+│ Total Reads          │ 1,163     │
+│ Read Errors          │ 23        │
+│ Avg Read Time        │ 6.73ms    │
+│ Success Rate         │ 99.4%     │
+└──────────────────────┴───────────┘
+```
+
+The scripts automatically build lightweight Docker containers and provide real-time monitoring dashboards. See [TESTING_CONTAINERS.md](TESTING_CONTAINERS.md) for detailed documentation.
 
 ### Building Docker Images
 
