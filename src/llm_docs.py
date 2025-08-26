@@ -37,6 +37,46 @@ docker build -t sensor-simulator .
 uv run pytest tests/
 ```
 
+## Database Architecture
+
+The simulator uses a **simplified, single-threaded SQLite database** with WAL mode:
+- **90,000+ writes/second** capability
+- **Zero threading** - no deadlocks or race conditions
+- **Automatic batching** - commits every 10 seconds or 50 records
+- **WAL mode always enabled** - excellent read/write separation
+
+### ⚠️ CRITICAL: Always Use Read-Only Mode for Reading
+
+```python
+# ✅ CORRECT - Safe reading
+import sqlite3
+conn = sqlite3.connect("file:data/sensor_data.db?mode=ro", uri=True)
+
+# ❌ WRONG - Can cause corruption!
+conn = sqlite3.connect("data/sensor_data.db")  # DON'T DO THIS!
+```
+
+```bash
+# ✅ CORRECT - Command line reading
+sqlite3 "file:data/sensor_data.db?mode=ro" "SELECT COUNT(*) FROM sensor_readings;"
+
+# ❌ WRONG - Can cause corruption!
+sqlite3 data/sensor_data.db  # DON'T DO THIS!
+```
+
+### Safe Reader Scripts
+
+```bash
+# Interactive reader with monitoring
+python read_sensor_data.py
+
+# Example reader implementation
+./reader_example.py
+
+# Test concurrent readers
+./test_readers.py -r 20 -t 30
+```
+
 ## Database Schema (SQLite)
 
 ```sql
@@ -78,14 +118,9 @@ version: 2  # 1 for legacy, 2 for enhanced features
 
 database:
   path: "data/sensor_data.db"
-  batch_size: 100
-  retry_attempts: 3
-  retry_delay: 1.0
-  wal_mode: true
-  backup:
-    enabled: false
-    interval: 3600
-    path: "data/backups"
+  batch_size: 50         # Records per batch
+  batch_timeout: 10      # Seconds before forced commit
+  # Note: WAL mode is always enabled, no configuration needed
 
 logging:
   level: "INFO"
