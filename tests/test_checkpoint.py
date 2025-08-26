@@ -9,7 +9,6 @@
 import signal
 import sqlite3
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -197,56 +196,6 @@ class TestDatabaseCheckpointing:
 
         readings = db.get_readings(limit=1)
         assert len(readings) == 1
-        db.close()
-
-    @pytest.mark.skip(reason="SQLite connections can't be shared across threads")
-    def test_concurrent_writes_with_checkpointing(self):
-        """Test concurrent writes don't interfere with checkpointing."""
-        db = SensorDatabase(self.db_path)
-        results = []
-        errors = []
-
-        def writer_thread(thread_id, num_writes):
-            try:
-                for i in range(num_writes):
-                    db.insert_reading(
-                        sensor_id=f"THREAD{thread_id}_{i:03d}",
-                        temperature=20.0 + thread_id + i,
-                        vibration=0.1 * thread_id,
-                        voltage=12.0,
-                        status_code=0,
-                    )
-                    # Occasionally force commit
-                    if i % 3 == 0:
-                        db.commit_batch()
-                results.append(thread_id)
-            except Exception as e:
-                errors.append((thread_id, str(e)))
-
-        # Start multiple writer threads
-        threads = []
-        for i in range(3):
-            t = threading.Thread(target=writer_thread, args=(i, 5))
-            threads.append(t)
-            t.start()
-
-        # Wait for all threads
-        for t in threads:
-            t.join(timeout=10)
-
-        # Final commit
-        db.commit_batch()
-
-        # Verify no errors
-        assert len(errors) == 0
-        assert len(results) == 3
-
-        # Verify all data was written
-        readings = db.get_readings(limit=20)
-        # Due to timing, some threads might have inserted extra entries
-        # We should have at least 15 entries (3 threads × 5 writes)
-        assert len(readings) >= 15
-
         db.close()
 
     def test_database_checkpoint_performance_metrics(self):

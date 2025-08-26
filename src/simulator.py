@@ -526,7 +526,6 @@ class SensorSimulator:
                 "latitude": self.latitude,
                 "longitude": self.longitude,
                 "original_timezone": self.timezone_offset_str,  # Pass the stored offset string
-                "synced": False,  # Default value for new readings
                 # New fields from enhanced identity
                 "serial_number": getattr(self, "serial_number", None),
                 "manufacture_date": getattr(self, "manufacture_date", None),
@@ -675,11 +674,9 @@ class SensorSimulator:
                     db_stats = self.database.get_database_stats()
                     db_count = db_stats.get("total_readings", 0)
                     db_size = db_stats.get("database_size_mb", 0)
-                    unsynced = db_stats.get("unsynced_readings", 0)
                 except Exception:
                     db_count = "?"
                     db_size = "?"
-                    unsynced = "?"
 
                 # Memory usage
                 import psutil
@@ -694,7 +691,7 @@ class SensorSimulator:
                 logger.debug(
                     f"📊 STATUS [Runtime: {elapsed:.1f}s/{self.run_time_seconds}s] | "
                     f"Readings: {current_readings} (Rate: {readings_per_sec:.1f}/s, Target: {self.readings_per_second}/s) | "
-                    f"DB: {db_count} records ({db_size:.2f}MB, {unsynced} unsynced) | "
+                    f"DB: {db_count} records ({db_size:.2f}MB) | "
                     f"Errors: {self.error_count} | Memory: {memory_mb:.1f}MB | "
                     f"Remaining: {remaining:.1f}s"
                 )

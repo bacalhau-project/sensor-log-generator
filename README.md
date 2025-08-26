@@ -503,10 +503,7 @@ CREATE TABLE sensor_data (
     -- Deployment info
     deployment_type TEXT,
     installation_date TEXT,
-    height_meters REAL,
-
-    -- Sync status
-    synced BOOLEAN DEFAULT 0
+    height_meters REAL
 );
 ```
 

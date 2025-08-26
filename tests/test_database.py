@@ -80,58 +80,6 @@ class TestSensorDatabase:
         assert readings[0]["temperature"] == 25.0
         db.close()
 
-    def test_get_unsynced_readings(self):
-        """Test getting unsynced readings."""
-        db = SensorDatabase(self.db_path)
-
-        # Insert some readings
-        for i in range(5):
-            db.insert_reading(
-                sensor_id=f"TEST{i:03d}",
-                temperature=20.0 + i,
-                vibration=0.1,
-                voltage=12.0,
-                status_code=0,
-            )
-        db.commit_batch()
-
-        # Get unsynced readings
-        unsynced = db.get_unsynced_readings(limit=3)
-        assert len(unsynced) == 3
-        assert all(r["synced"] == 0 for r in unsynced)
-
-        db.close()
-
-    def test_mark_readings_as_synced(self):
-        """Test marking readings as synced."""
-        db = SensorDatabase(self.db_path)
-
-        # Insert readings
-        for i in range(3):
-            db.insert_reading(
-                sensor_id=f"TEST{i:03d}",
-                temperature=20.0 + i,
-                vibration=0.1,
-                voltage=12.0,
-                status_code=0,
-            )
-        db.commit_batch()
-
-        # Get readings and mark as synced
-        readings = db.get_unsynced_readings()
-        reading_ids = [r["id"] for r in readings]
-        db.mark_readings_as_synced(reading_ids)
-
-        # Verify they're marked as synced
-        unsynced = db.get_unsynced_readings()
-        assert len(unsynced) == 0
-
-        stats = db.get_reading_stats()
-        assert stats["synced_readings"] == 3
-        assert stats["unsynced_readings"] == 0
-
-        db.close()
-
     def test_get_reading_stats(self):
         """Test getting reading statistics."""
         db = SensorDatabase(self.db_path)
@@ -149,8 +97,6 @@ class TestSensorDatabase:
 
         stats = db.get_reading_stats()
         assert stats["total_readings"] == 10
-        assert stats["unsynced_readings"] == 10
-        assert stats["synced_readings"] == 0
 
         db.close()
 
@@ -187,9 +133,6 @@ class TestSensorDatabase:
     def test_database_error_handling(self):
         """Test error handling for invalid operations."""
         db = SensorDatabase(self.db_path)
-
-        # Try to mark non-existent readings as synced
-        db.mark_readings_as_synced([999, 1000])  # Should not raise
 
         # Try to get readings with invalid limit
         readings = db.get_readings(limit=-1)

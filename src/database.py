@@ -35,7 +35,6 @@ class SensorReadingSchema(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     original_timezone: str | None = None
-    synced: bool | None = False
     # Enhanced identity fields
     serial_number: str | None = None
     manufacture_date: str | None = None
@@ -130,7 +129,6 @@ class SensorDatabase:
                 latitude REAL,
                 longitude REAL,
                 original_timezone TEXT,
-                synced INTEGER DEFAULT 0,
                 serial_number TEXT,
                 manufacture_date TEXT,
                 deployment_type TEXT,
@@ -145,7 +143,6 @@ class SensorDatabase:
         # Create indices
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON sensor_readings(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_readings(sensor_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_synced ON sensor_readings(synced)")
 
         self.conn.commit()
         cursor.close()
@@ -196,7 +193,6 @@ class SensorDatabase:
                     reading.latitude,
                     reading.longitude,
                     reading.original_timezone,
-                    1 if reading.synced else 0,
                     reading.serial_number,
                     reading.manufacture_date,
                     reading.deployment_type,
@@ -215,11 +211,11 @@ class SensorDatabase:
                 timestamp, sensor_id, temperature, humidity, pressure,
                 vibration, voltage, status_code, anomaly_flag, anomaly_type,
                 firmware_version, model, manufacturer, location,
-                latitude, longitude, original_timezone, synced,
+                latitude, longitude, original_timezone,
                 serial_number, manufacture_date, deployment_type,
                 installation_date, height_meters, orientation_degrees,
                 instance_id, sensor_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             batch_data,
         )
@@ -285,42 +281,6 @@ class SensorDatabase:
         cursor.close()
         return readings
 
-    def get_unsynced_readings(self, limit: int = 100) -> list[dict]:
-        """Get unsynced readings."""
-        assert self.conn is not None
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM sensor_readings
-            WHERE synced = 0
-            ORDER BY id ASC
-            LIMIT ?
-        """,
-            (limit,),
-        )
-
-        readings = []
-        for row in cursor.fetchall():
-            readings.append(dict(row))
-
-        cursor.close()
-        return readings
-
-    def mark_readings_as_synced(self, reading_ids: list[int]):
-        """Mark readings as synced."""
-        if not reading_ids:
-            return
-
-        assert self.conn is not None
-        cursor = self.conn.cursor()
-        placeholders = ",".join("?" * len(reading_ids))
-        cursor.execute(
-            f"UPDATE sensor_readings SET synced = 1 WHERE id IN ({placeholders})", reading_ids
-        )
-        assert self.conn is not None
-        self.conn.commit()
-        cursor.close()
-
     def get_reading_stats(self) -> dict:
         """Get basic statistics."""
         assert self.conn is not None
@@ -328,15 +288,10 @@ class SensorDatabase:
         cursor.execute("SELECT COUNT(*) FROM sensor_readings")
         total = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM sensor_readings WHERE synced = 0")
-        unsynced = cursor.fetchone()[0]
-
         cursor.close()
 
         return {
             "total_readings": total,
-            "unsynced_readings": unsynced,
-            "synced_readings": total - unsynced,
         }
 
     def get_database_stats(self) -> dict[str, Any]:

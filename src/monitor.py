@@ -112,18 +112,10 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
         ):
             db_metrics = self.simulator.database.get_performance_stats()
 
-        # Get sync stats
-        sync_stats = {}
-        if hasattr(self.simulator, "database") and hasattr(
-            self.simulator.database, "get_sync_stats"
-        ):
-            sync_stats = self.simulator.database.get_sync_stats()
-
         # Combine all metrics
         metrics = {
             "simulator": simulator_status,
             "database": db_metrics,
-            "sync": sync_stats,
             "timestamp": time.time(),
         }
 
@@ -177,12 +169,6 @@ class MonitoringRequestHandler(BaseHTTPRequestHandler):
                         stats["performance_metrics"]["total_insert_time_s"], 2
                     ),
                     "pending_batch_size": stats["performance_metrics"]["pending_batch_size"],
-                },
-                "sync_status": {
-                    "total": stats["sync_stats"]["total"],
-                    "synced": stats["sync_stats"]["synced"],
-                    "unsynced": stats["sync_stats"]["unsynced"],
-                    "sync_percentage": round(stats["sync_stats"]["sync_percentage"], 2),
                 },
                 "anomalies": stats["anomaly_stats"],
             }

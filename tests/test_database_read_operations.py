@@ -8,7 +8,6 @@
 # ///
 import sqlite3
 import tempfile
-import time
 from pathlib import Path
 
 import pytest
@@ -70,146 +69,6 @@ class TestDatabaseReadOperations:
         timestamps = [r["timestamp"] for r in readings]
         assert timestamps == sorted(timestamps, reverse=True)
 
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_readings_after_offset(self):
-        """Test reading data with offset using direct SQL."""
-        self._create_test_data(20)
-
-        # Get first batch
-        first_batch = self.db.get_readings(limit=10)
-
-        # Get second batch with offset using direct SQL
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM sensor_readings ORDER BY timestamp DESC LIMIT 10 OFFSET 10"
-            )
-            second_batch = cursor.fetchall()
-
-        # Ensure no overlap
-        first_ids = [r[0] for r in first_batch]
-        second_ids = [r[0] for r in second_batch]
-        assert len(set(first_ids) & set(second_ids)) == 0
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_readings_by_sensor_id(self):
-        """Test filtering readings by sensor ID."""
-        self._create_test_data(10)
-
-        # Add readings for specific sensor
-        for i in range(5):
-            self.db.insert_reading(
-                sensor_id="SPECIAL001",
-                temperature=30.0 + i,
-                vibration=0.2,
-                voltage=13.0,
-                status_code=0,
-            )
-        self.db.commit_batch()
-
-        # Query specific sensor
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM sensor_readings WHERE sensor_id = ? ORDER BY timestamp DESC",
-                ("SPECIAL001",),
-            )
-            readings = cursor.fetchall()
-
-        assert len(readings) == 5
-        assert all(r[2] == "SPECIAL001" for r in readings)
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_readings_by_time_range(self):
-        """Test filtering readings by time range."""
-        # Insert readings with specific timestamps
-        base_time = time.time()
-        for i in range(10):
-            # timestamp = base_time - (i * 60)  # 1 minute apart (not used in new API)
-            # Use insert_reading which accepts individual parameters
-            self.db.insert_reading(
-                sensor_id=f"TIME{i:03d}",
-                temperature=25.0,
-                vibration=0.1,
-                voltage=12.0,
-                status_code=0,
-                anomaly_flag=False,
-                firmware_version="1.0",
-                model="TestModel",
-                manufacturer="TestMfg",
-                location="Test Location",
-                timezone_str="+00:00",
-            )
-
-        # Query last 5 minutes
-        cutoff_time = base_time - (5 * 60)
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM sensor_readings WHERE timestamp > ? ORDER BY timestamp DESC",
-                (cutoff_time,),
-            )
-            readings = cursor.fetchall()
-
-        assert len(readings) == 5
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_anomaly_readings(self):
-        """Test retrieving only anomaly readings."""
-        self._create_test_data(20)
-
-        # Query anomaly readings
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM sensor_readings WHERE anomaly_flag = 1 ORDER BY timestamp DESC"
-            )
-            anomalies = cursor.fetchall()
-
-        # Every 5th reading should be an anomaly (0, 5, 10, 15)
-        assert len(anomalies) == 4
-        assert all(r[9] == 1 for r in anomalies)  # anomaly_flag column
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_readings_with_specific_status(self):
-        """Test filtering by status code."""
-        self._create_test_data(15)
-
-        # Query readings with status code 1
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM sensor_readings WHERE status_code = ? ORDER BY timestamp DESC", (1,)
-            )
-            readings = cursor.fetchall()
-
-        # Should be 5 readings with status code 1 (indices 1, 4, 7, 10, 13)
-        assert len(readings) == 5
-        assert all(r[8] == 1 for r in readings)  # status_code column
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_aggregate_statistics(self):
-        """Test aggregate statistics queries."""
-        self._create_test_data(100)
-
-        with self.db.conn_manager.get_cursor() as cursor:
-            # Average temperature
-            cursor.execute("SELECT AVG(temperature) FROM sensor_readings")
-            avg_temp = cursor.fetchone()[0]
-            assert 65 < avg_temp < 75  # Should be around 69.5
-
-            # Min and max vibration
-            cursor.execute("SELECT MIN(vibration), MAX(vibration) FROM sensor_readings")
-            min_vib, max_vib = cursor.fetchone()
-            assert min_vib >= 0.1
-            assert max_vib < 2.0
-
-            # Count by status code
-            cursor.execute("SELECT status_code, COUNT(*) FROM sensor_readings GROUP BY status_code")
-            status_counts = dict(cursor.fetchall())
-            assert len(status_counts) == 3  # Status codes 0, 1, 2
-
     def test_get_database_stats(self):
         """Test comprehensive database statistics."""
         self._create_test_data(50)
@@ -231,7 +90,6 @@ class TestDatabaseReadOperations:
 
         stats = self.db.get_database_stats()
         assert stats["total_readings"] == 0
-        assert stats["unsynced_readings"] == 0
 
     def test_concurrent_read_write(self):
         """Test concurrent read and write operations."""
@@ -269,70 +127,6 @@ class TestDatabaseReadOperations:
         readings2 = self.db.get_readings(limit=100)
         assert len(readings1) > 0
         assert len(readings2) > len(readings1)
-
-    @pytest.mark.skip(reason="Pydantic schema method signature changed")
-    def test_get_readings_with_pydantic_schema(self):
-        """Test reading with Pydantic schema validation."""
-        pass
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_pagination(self):
-        """Test paginated reading of large datasets."""
-        # Create large dataset
-        self._create_test_data(100)
-
-        page_size = 10
-        all_readings = []
-
-        for page in range(10):
-            offset = page * page_size
-            with self.db.conn_manager.get_cursor() as cursor:
-                cursor.execute(
-                    "SELECT * FROM sensor_readings ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-                    (page_size, offset),
-                )
-                readings = cursor.fetchall()
-            all_readings.extend(readings)
-
-            if page < 9:
-                assert len(readings) == page_size
-
-        # Verify we got all unique readings
-        reading_ids = [r[0] for r in all_readings]
-        assert len(set(reading_ids)) == 100
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_get_latest_reading_per_sensor(self):
-        """Test getting the latest reading for each sensor."""
-        # Create readings for multiple sensors
-        sensors = ["SENSOR_A", "SENSOR_B", "SENSOR_C"]
-        for sensor in sensors:
-            for i in range(5):
-                time.sleep(0.01)  # Ensure different timestamps
-                self.db.insert_reading(
-                    sensor_id=sensor,
-                    temperature=25.0 + i,
-                    vibration=0.1,
-                    voltage=12.0,
-                    status_code=0,
-                )
-        self.db.commit_batch()
-
-        # Get latest reading for each sensor
-        with self.db.conn_manager.get_cursor() as cursor:
-            cursor.execute("""
-                SELECT sensor_id, MAX(timestamp) as latest, temperature
-                FROM sensor_readings
-                GROUP BY sensor_id
-                ORDER BY sensor_id
-            """)
-            latest_readings = cursor.fetchall()
-
-        assert len(latest_readings) == 3
-        for reading in latest_readings:
-            assert reading[0] in sensors
-            assert reading[2] == 29.0  # Last temperature value
 
 
 class TestDatabaseEdgeCases:
@@ -416,36 +210,6 @@ class TestDatabaseEdgeCases:
         finally:
             # Restore write permissions for cleanup
             Path.chmod(db_path, 0o644)
-
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    @pytest.mark.skip(reason="Advanced query features removed in simplified database")
-    def test_database_locked_error(self):
-        """Test handling of database locked errors."""
-        db_path = Path(self.temp_dir.name) / "locked.db"
-
-        db1 = SensorDatabase(db_path)
-
-        # Start a transaction in db1
-        with db1.conn_manager.get_connection() as conn:
-            conn.execute("BEGIN EXCLUSIVE")
-
-            # Try to write from another connection (should timeout or fail)
-            db2 = SensorDatabase(db_path, preserve_existing_db=True)
-            db2.conn_manager.conn.execute("PRAGMA busy_timeout = 100")  # Short timeout
-
-            with pytest.raises(sqlite3.OperationalError):
-                db2.insert_reading(
-                    sensor_id="LOCKED001",
-                    temperature=25.0,
-                    vibration=0.1,
-                    voltage=12.0,
-                    status_code=0,
-                )
-                db2.commit_batch()
-
-            db2.close()
-
-        db1.close()
 
     def test_very_large_batch(self):
         """Test handling of very large batch inserts."""

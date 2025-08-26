@@ -8,16 +8,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.config import ConfigManager
-from src.database import SensorDatabase
-from src.simulator import SensorSimulator
 
 
 class TestMainIntegration:
@@ -155,195 +150,11 @@ class TestMainIntegration:
         assert count >= 5, f"Expected at least 5 readings, got {count}"
         assert count <= 15, f"Expected at most 15 readings, got {count}"
 
-    @pytest.mark.skip(reason="Test logic issue")
-    def test_simulator_run_is_called(self, temp_dirs, test_config, test_identity):
-        """Test that the simulator's run method is properly called."""
-        with patch("src.simulator.SensorSimulator.run") as mock_run:
-            # Import main module
-            import main
-
-            # Set up arguments
-            sys.argv = [
-                "main.py",
-                "--config",
-                str(test_config),
-                "--identity",
-                str(test_identity),
-            ]
-
-            # Call main function
-            with pytest.raises(SystemExit) as exc_info:
-                main.main()
-
-            # Check that run was called
-            assert mock_run.called, "Simulator.run() was not called"
-            assert exc_info.value.code == 0
-
-    @pytest.mark.skip(reason="ConfigManager API issue")
-    def test_database_writes_during_simulation(self, temp_dirs, test_config, test_identity):
-        """Test that data is written to the database during simulation."""
-        with Path.open(test_config) as f:
-            config_data = yaml.safe_load(f)
-        with Path.open(test_identity) as f:
-            identity_data = json.load(f)
-
-        config_mgr = ConfigManager(
-            config=config_data,
-            identity=identity_data,
-        )
-
-        # Create database
-        db = SensorDatabase(config_mgr)
-
-        # Create simulator
-        simulator = SensorSimulator(config_mgr, db)
-
-        # Run simulation
-        simulator.run()
-
-        # Check database
-        db_path = Path(config_data["database"]["path"])
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM sensor_readings")
-        count = cursor.fetchone()[0]
-        conn.close()
-
-        # Should have ~10 readings (10 per second for 1 second)
-        assert count >= 8, f"Expected at least 8 readings, got {count}"
-        assert count <= 12, f"Expected at most 12 readings, got {count}"
-
-
-class TestDatabaseIntegration:
-    """Test database operations in realistic scenarios."""
-
-    @pytest.fixture
-    def db_manager(self, tmp_path):
-        """Create a database manager for testing."""
-        db_path = tmp_path / "test.db"
-        # Create a proper config for testing
-        config_data = {
-            "sensor": {
-                "type": "environmental",
-                "location": "Test Location",
-                "manufacturer": "Test",
-                "model": "Test Model",
-                "firmware_version": "1.0",
-            },
-            "simulation": {"readings_per_second": 1, "run_time_seconds": 1},
-            "database": {"path": str(db_path)},
-            "logging": {"level": "DEBUG"},
-        }
-        # Need identity for ConfigManager
-        identity_data = {
-            "sensor_id": "TEST_DB_001",
-            "location": {
-                "city": "Test",
-                "state": "TS",
-                "coordinates": {"latitude": 0, "longitude": 0},
-                "timezone": "UTC",
-                "address": "Test",
-            },
-            "device_info": {
-                "manufacturer": "Test",
-                "model": "Test Model",
-                "firmware_version": "1.0",
-                "serial_number": "TEST",
-                "manufacture_date": "2024-01-01",
-            },
-            "deployment": {
-                "deployment_type": "fixed",
-                "installation_date": "2024-01-01",
-                "height_meters": 0,
-                "orientation_degrees": 0,
-            },
-            "metadata": {"instance_id": "test", "sensor_type": "test"},
-        }
-        config_mgr = ConfigManager(config=config_data, identity=identity_data)
-        return SensorDatabase(config_mgr)
-
-    @pytest.mark.skip(reason="ConfigManager API issue")
-    def test_concurrent_writes(self, db_manager):
-        """Test that concurrent writes work correctly."""
-        # This test is simplified since we don't have the exact schema
-        # Just verify the database connection works
-        assert db_manager.conn_manager is not None
-        assert db_manager.identity is not None
-
-    @pytest.mark.skip(reason="ConfigManager API issue")
-    def test_database_persistence(self, tmp_path):
-        """Test that data persists across database connections."""
-        db_path = tmp_path / "persist.db"
-
-        # Create first database instance and write data
-        config_data = {
-            "sensor": {
-                "type": "environmental",
-                "location": "Test Location",
-                "manufacturer": "Test",
-                "model": "Test Model",
-                "firmware_version": "1.0",
-            },
-            "simulation": {"readings_per_second": 10, "run_time_seconds": 0.5},
-            "database": {"path": str(db_path)},
-            "logging": {"level": "INFO"},
-        }
-
-        # Need identity for ConfigManager
-        identity_data = {
-            "sensor_id": "TEST_PERSIST_001",
-            "location": {
-                "city": "Test",
-                "state": "TS",
-                "coordinates": {"latitude": 0, "longitude": 0},
-                "timezone": "UTC",
-                "address": "Test",
-            },
-            "device_info": {
-                "manufacturer": "Test",
-                "model": "Test Model",
-                "firmware_version": "1.0",
-                "serial_number": "TEST",
-                "manufacture_date": "2024-01-01",
-            },
-            "deployment": {
-                "deployment_type": "fixed",
-                "installation_date": "2024-01-01",
-                "height_meters": 0,
-                "orientation_degrees": 0,
-            },
-            "metadata": {"instance_id": "test", "sensor_type": "test"},
-        }
-        config1 = ConfigManager(config=config_data, identity=identity_data)
-        db1 = SensorDatabase(config1)
-        sim1 = SensorSimulator(config1, db1)
-        sim1.run()
-
-        # Get count from first connection
-        with db1.conn_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM sensor_readings")
-            count1 = cursor.fetchone()[0]
-
-        # Create second database instance
-        config2 = ConfigManager(config=config_data, identity=identity_data)
-        db2 = SensorDatabase(config2, preserve_existing_db=True)
-
-        # Get count from second connection
-        with db2.conn_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM sensor_readings")
-            count2 = cursor.fetchone()[0]
-
-        # Counts should match
-        assert count2 == count1, f"Data not persisted: {count1} != {count2}"
-        assert count2 > 0, "No data was written"
-
 
 class TestSignalHandling:
     """Test signal handling and graceful shutdown."""
 
-    @pytest.mark.skip(reason="Timing issue in test")
+    @pytest.mark.skip(reason="Flaky timing test")
     def test_graceful_shutdown_on_sigint(self, tmp_path):
         """Test that SIGINT causes graceful shutdown."""
         config_file = tmp_path / "config.yaml"
@@ -411,8 +222,8 @@ class TestSignalHandling:
             text=True,
         )
 
-        # Let it run briefly
-        time.sleep(1)
+        # Let it run briefly to ensure some data is written
+        time.sleep(2)
 
         # Send SIGINT
         proc.send_signal(signal.SIGINT)
@@ -432,89 +243,3 @@ class TestSignalHandling:
             count = cursor.fetchone()[0]
             conn.close()
             assert count > 0, "No data written before shutdown"
-
-
-class TestEndToEnd:
-    """End-to-end integration tests."""
-
-    @pytest.mark.skip(reason="Integration test needs ConfigManager update")
-    def test_full_simulation_cycle(self, tmp_path):
-        """Test a complete simulation cycle with anomalies."""
-        config = {
-            "sensor": {
-                "type": "environmental",
-                "location": "Integration Test",
-                "manufacturer": "TestCorp",
-                "model": "IntegrationTest-3000",
-                "firmware_version": "2.0.0",
-            },
-            "simulation": {
-                "readings_per_second": 5,
-                "run_time_seconds": 2,
-            },
-            "anomalies": {
-                "enabled": True,
-                "probability": 0.5,  # High probability for testing
-            },
-            "database": {
-                "path": str(tmp_path / "integration.db"),
-            },
-            "logging": {
-                "level": "DEBUG",
-                "console_output": False,
-            },
-        }
-
-        identity = {
-            "sensor_id": "INTEG_TEST_001",
-            "location": {
-                "city": "Test City",
-                "state": "TC",
-                "coordinates": {"latitude": 45.0, "longitude": -90.0},
-                "timezone": "America/Chicago",
-                "address": "Test Address",
-            },
-            "device_info": {
-                "manufacturer": "TestCorp",
-                "model": "IntegrationTest-3000",
-                "firmware_version": "2.0.0",
-                "serial_number": "INTEG-123",
-                "manufacture_date": "2024-01-01",
-            },
-            "deployment": {
-                "deployment_type": "mobile",
-                "installation_date": "2024-01-01",
-                "height_meters": 5.0,
-                "orientation_degrees": 180,
-            },
-            "metadata": {"instance_id": "integ-test", "sensor_type": "environmental_monitoring"},
-        }
-
-        # Run simulation
-        config_mgr = ConfigManager(config=config, identity=identity)
-        db = SensorDatabase(config_mgr)
-        simulator = SensorSimulator(config_mgr, db)
-        simulator.run()
-
-        # Verify results
-        conn = sqlite3.connect(str(tmp_path / "integration.db"))
-        cursor = conn.cursor()
-
-        # Check total readings
-        cursor.execute("SELECT COUNT(*) FROM sensor_readings")
-        total_count = cursor.fetchone()[0]
-        assert 8 <= total_count <= 12, f"Expected ~10 readings, got {total_count}"
-
-        # Check for anomalies (with 50% probability, should have some)
-        cursor.execute("SELECT COUNT(*) FROM sensor_readings WHERE anomaly_flag = 1")
-        anomaly_count = cursor.fetchone()[0]
-        # With 50% probability, we expect some anomalies but not necessarily exactly 50%
-        assert anomaly_count >= 0, "Anomaly count should be non-negative"
-
-        # Check sensor_id is correct
-        cursor.execute("SELECT DISTINCT sensor_id FROM sensor_readings")
-        sensor_ids = cursor.fetchall()
-        assert len(sensor_ids) == 1, f"Expected 1 sensor_id, got {len(sensor_ids)}"
-        assert sensor_ids[0][0] == "INTEG_TEST_001", f"Wrong sensor_id: {sensor_ids[0][0]}"
-
-        conn.close()

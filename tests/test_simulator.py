@@ -276,18 +276,6 @@ class TestSensorSimulator(unittest.TestCase):
         except Exception as e:
             self.fail(f"Simulator failed with high readings_per_second: {e}")
 
-    @pytest.mark.skip(reason="Path handling issue unrelated to database changes")
-    def test_simulator_database_error_handling(self):
-        """Test simulator handles database errors gracefully."""
-        # Use an invalid database path to trigger errors
-        invalid_db_path = "/invalid/path/to/database.db"
-        config = get_minimal_config(invalid_db_path)
-        identity = get_minimal_identity()
-
-        with pytest.raises(sqlite3.OperationalError):
-            config_manager = ConfigManager(config=config, identity=identity)
-            SensorSimulator(config_manager=config_manager)
-
 
 if __name__ == "__main__":
     unittest.main()

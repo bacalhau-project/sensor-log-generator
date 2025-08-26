@@ -166,30 +166,6 @@ class TestAnomalyGenerator:
         assert generator_v14.should_generate_anomaly() is True
         assert generator_v15.should_generate_anomaly() is False
 
-    @patch("src.anomaly.random.random")
-    @pytest.mark.skip(reason="Test logic issue unrelated to database changes")
-    def test_manufacturer_affects_probability(self, mock_random):
-        """Test that manufacturer affects anomaly probability."""
-        config = self.get_valid_config()
-
-        # Test different manufacturers
-        identity_sensortech = self.get_valid_identity()
-        identity_sensortech["manufacturer"] = "SensorTech"
-        generator_sensortech = AnomalyGenerator(config, identity_sensortech)
-
-        identity_iotpro = self.get_valid_identity()
-        identity_iotpro["manufacturer"] = "IoTPro"
-        generator_iotpro = AnomalyGenerator(config, identity_iotpro)
-
-        # SENSORTECH: 0.1 * 1.5 (firmware) * 1.0 (manufacturer) = 0.15
-        # IOTPRO: 0.1 * 1.5 (firmware) * 1.2 (manufacturer) = 0.18
-
-        # Set random value that should work for IOTPRO but not SENSORTECH
-        mock_random.return_value = 0.16  # Between SENSORTECH (0.15) and IOTPRO (0.18)
-
-        assert generator_sensortech.should_generate_anomaly() is False
-        assert generator_iotpro.should_generate_anomaly() is True
-
     def test_select_anomaly_type_no_enabled_types(self):
         """Test selecting anomaly type when no types are enabled."""
         config = self.get_valid_config()

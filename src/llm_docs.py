@@ -92,7 +92,6 @@ CREATE TABLE sensor_readings (
     status_code INTEGER,
     anomaly_flag INTEGER,
     anomaly_type TEXT,
-    synced INTEGER DEFAULT 0,
     firmware_version TEXT,
     model TEXT,
     manufacturer TEXT,
@@ -304,7 +303,6 @@ location:
 Aggregates data from multiple sensor databases:
 - Scans directories recursively for .db files
 - Batch collection with configurable size
-- Sync tracking with `synced` flag
 - HTTP POST to central API endpoint
 - Automatic retry with exponential backoff
 

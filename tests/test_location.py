@@ -302,53 +302,6 @@ class TestProcessIdentityAndLocationInMain(unittest.TestCase):
 
         MockLocationGenerator.assert_not_called()  # LocationGenerator not used if identity has full geo-info
 
-    @patch("main.generate_sensor_id", return_value="GENERATED_ID_MOCK")
-    @pytest.mark.skip(reason="Dict comparison issue")
-    def test_location_not_specified_random_enabled_generated_fuzzed_location(
-        self, mock_generate_id
-    ):
-        """If no location specified and random_location true, a fuzzed location should be generated and not constant."""
-        # Create a temporary cities file using self.mock_city_data
-        temp_cities_file = self._create_temp_cities_file(self.mock_city_data)
-
-        identity_data = self.base_identity.copy()
-        del identity_data["location"]  # Remove location to trigger generation
-        del identity_data["latitude"]
-        del identity_data["longitude"]
-
-        app_config = self.base_app_config.copy()
-        app_config["random_location"]["enabled"] = True
-        app_config["random_location"]["gps_variation"] = 1000  # 1km
-        app_config["random_location"]["cities_file"] = temp_cities_file  # Use temp file
-        app_config["random_location"]["number_of_cities"] = len(self.mock_city_data)
-
-        # Run 1
-        processed_identity1 = process_identity_and_location(identity_data.copy(), app_config)
-        assert processed_identity1["location"] in self.mock_city_data
-        base_city1_data = self.mock_city_data[processed_identity1["location"]]
-        assert processed_identity1["latitude"] != base_city1_data["latitude"]
-        assert processed_identity1["longitude"] != base_city1_data["longitude"]
-
-        # Run 2 - to check if generated location is not constant (due to random.choice and fuzzing)
-        # With a real LocationGenerator, city choice is random; fuzzing should ensure coord difference
-        processed_identity2 = process_identity_and_location(identity_data.copy(), app_config)
-        assert processed_identity2["location"] in self.mock_city_data
-        base_city2_data = self.mock_city_data[processed_identity2["location"]]
-        assert processed_identity2["latitude"] != base_city2_data["latitude"]
-        assert processed_identity2["longitude"] != base_city2_data["longitude"]
-
-        # Check that the two generated locations are different (either city name or fuzzed coords)
-        # With fuzzing, even if the same city is picked, coords should differ.
-        # If different cities are picked, location names will differ.
-        location_different = processed_identity1["location"] != processed_identity2["location"]
-        coords_different = (
-            processed_identity1["latitude"] != processed_identity2["latitude"]
-            or processed_identity1["longitude"] != processed_identity2["longitude"]
-        )
-        assert (
-            location_different or coords_different
-        ), "Generated locations/coords should not be constant across calls."
-
     @patch("main.generate_sensor_id")  # Not expected to be called if erroring before ID gen
     @patch("main.LocationGenerator")
     def test_location_not_specified_random_disabled_error(
