@@ -1,7 +1,5 @@
-version: '3.8'
-
-# Development configuration that works identically on Mac and Linux
-# Uses DELETE mode and named volumes for cross-platform compatibility
+# Development configuration for testing concurrent read/write
+# Tests sensor writing while readers access the database
 
 services:
   # Sensor simulator (writer)
@@ -10,50 +8,38 @@ services:
     image: sensor-simulator:latest
     container_name: sensor-writer
     environment:
-      - LOG_LEVEL=INFO
-      - MONITORING_ENABLED=true
-      - MONITORING_PORT=8080
-      # Don't set SENSOR_WAL - use DELETE mode for cross-platform compatibility
+      - CONFIG_FILE=/config/config.yaml
+      - IDENTITY_FILE=/config/node-identity.json
+      - SENSOR_WAL=true  # Use WAL mode for proper concurrent access
     volumes:
-      - sensor-data:/app/data  # Named volume works on all platforms
+      - ./config:/config:ro    # Mount local config directory
+      - ./data:/app/data        # Mount local data directory
     ports:
       - "8080:8080"  # Monitoring API
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     restart: unless-stopped
 
-  # Your reader process (second container)
+  # Reader process (monitoring container)
   reader:
-    build: .
-    image: sensor-simulator:latest
+    image: alpine:latest
     container_name: sensor-reader
     depends_on:
       - sensor
     volumes:
-      - sensor-data:/app/data:ro  # Same volume, read-only
-    command: |
-      bash -c '
-        echo "Waiting for database to be created..."
-        while [ ! -f /app/data/sensor_data.db ]; do
-          sleep 2
-        done
-        echo "Database found, starting reader..."
-        while true; do
-          echo "=== Reader Status at $$(date) ==="
-          sqlite3 /app/data/sensor_data.db "
-            SELECT '\''Total readings: '\'' || COUNT(*) FROM sensor_readings;
-            SELECT '\''Latest: '\'' || MAX(timestamp) FROM sensor_readings;
-            SELECT '\''Anomalies: '\'' || SUM(anomaly_flag) FROM sensor_readings;
-          " 2>/dev/null || echo "Database temporarily locked, retrying..."
-          sleep 10
-        done
+      - ./data:/data:ro  # Mount data directory read-only
+    command: >
+      sh -c '
+      apk add --no-cache sqlite &&
+      echo "Waiting for database..." &&
+      while [ ! -f /data/sensor_data.db ]; do sleep 2; done &&
+      echo "Database found, starting monitoring..." &&
+      while true; do
+        echo "=== Reader Status at $$(date) ===" &&
+        sqlite3 /data/sensor_data.db "
+          SELECT \"Total readings: \" || COUNT(*) FROM sensor_readings;
+          SELECT \"Latest: \" || MAX(timestamp) FROM sensor_readings;
+          SELECT \"Anomalies: \" || SUM(anomaly_flag) FROM sensor_readings;
+        " 2>/dev/null || echo "Database temporarily locked, retrying..." &&
+        sleep 10;
+      done
       '
     restart: unless-stopped
-
-# Named volume for database (works on all platforms)
-volumes:
-  sensor-data:
-    driver: local
