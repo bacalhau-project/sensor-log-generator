@@ -57,6 +57,8 @@ These scripts currently violate our philosophy by creating mock data:
 2. **Test scripts** should ONLY read from the database
 3. **Performance tests** should start multiple instances of the real sensor
 4. **Container tests** should use the actual sensor Docker image
+5. **Test databases** must use temporary directories, never `data/`
+6. **Only sensor_data.db** should exist in the `data/` directory
 
 ## Benefits
 

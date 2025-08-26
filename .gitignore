@@ -75,6 +75,7 @@ logs/*.txt
 !logs/.keep
 
 # Project specific - data files
+# Only sensor_data.db should exist in data/
 data/*.db
 data/*.db-journal
 data/*.db-wal
@@ -85,6 +86,11 @@ data/*.csv
 data/*.json
 data/tmp/
 !data/.keep
+# Specifically ignore test databases that shouldn't be in data/
+data/test*.db*
+data/debug*.db*
+data/container*.db*
+data/multiprocess*.db*
 
 # Test artifacts
 test_*.db
