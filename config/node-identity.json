@@ -1,16 +1,32 @@
 {
-  "sensor_id": "TEST001",
+  "sensor_id": "SENSOR_XX_YYY_ZZZZ",
   "location": {
-    "city": "New York",
+    "city": "YourCity",
+    "state": "XX",
     "coordinates": {
       "latitude": 40.7128,
       "longitude": -74.006
     },
-    "timezone": "America/New_York"
+    "timezone": "America/New_York",
+    "address": "YourCity, XX, USA"
   },
   "device_info": {
-    "manufacturer": "SensorTech",
-    "model": "TempSensor Pro",
-    "firmware_version": "1.2.0"
+    "manufacturer": "SensorCorp",
+    "model": "WeatherStation Pro",
+    "firmware_version": "2.1.0",
+    "serial_number": "SENSOR-8C88F5",
+    "manufacture_date": "2025-08-26"
+  },
+  "deployment": {
+    "deployment_type": "stationary_unit",
+    "installation_date": "2025-08-26",
+    "height_meters": 2.5,
+    "orientation_degrees": 0
+  },
+  "metadata": {
+    "instance_id": "i-b0a060fb63c3424b",
+    "identity_generation_timestamp": "2025-08-26T10:18:19.132370",
+    "generation_seed": 6512888196135987407094013990342748250293,
+    "sensor_type": "environmental_monitoring"
   }
 }

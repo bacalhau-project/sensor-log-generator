@@ -54,6 +54,7 @@ anomalies:
 
 database:
   path: "data/sensor_data.db"
+  preserve_existing_db: true  # Don't delete database on startup
   backup_enabled: false
   backup_interval_hours: 24
   backup_path: "data/backups/"
