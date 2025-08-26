@@ -663,7 +663,10 @@ class DockerComposeBuilder:
     help="Build in development mode (faster, single platform)",
 )
 @click.option(
-    "--skip-push/--push", envvar="SKIP_PUSH", default=False, help="Skip pushing to registry"
+    "--skip-push/--push",
+    envvar="SKIP_PUSH",
+    default=False,
+    help="Skip pushing to registry (auto-enabled for local builds unless PUSH_TO_REGISTRY=true)",
 )
 @click.option("--no-cache", is_flag=True, envvar="NO_CACHE", help="Disable build cache")
 @click.option("--no-login", is_flag=True, envvar="NO_LOGIN", help="Skip Docker registry login")
@@ -692,12 +695,19 @@ def main(
     This script uses Docker Compose for orchestrating multi-platform builds
     with proper semantic versioning, caching, and registry management.
 
+    Push behavior:
+    - CI environments: Push enabled by default
+    - Local builds: Push disabled by default (set PUSH_TO_REGISTRY=true to enable)
+
     Examples:
-        # Production build with auto version bump
+        # Local build (no push by default)
         ./build.py
 
-        # Development build (local only, single platform)
-        ./build.py --dev --skip-push
+        # Local build with push
+        PUSH_TO_REGISTRY=true ./build.py
+
+        # Development build (single platform)
+        ./build.py --dev
 
         # Build specific version
         ./build.py --version-tag 2.0.0
@@ -708,6 +718,22 @@ def main(
 
     console.print("\n[bold blue]🐳 Docker Compose Multi-Platform Builder[/bold blue]")
     console.print("[dim]Using Docker Compose for orchestrated builds[/dim]")
+
+    # Determine if we should push based on environment
+    is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+    push_to_registry = os.environ.get("PUSH_TO_REGISTRY", "").lower() in ["true", "1", "yes"]
+
+    # Override skip_push based on environment unless explicitly set
+    if not is_ci and not push_to_registry and not skip_push:
+        # Not in CI and PUSH_TO_REGISTRY not set, so skip push by default
+        skip_push = True
+        console.print("[yellow]📦 Local build detected - push disabled by default[/yellow]")
+        console.print("[dim]   Set PUSH_TO_REGISTRY=true to enable pushing[/dim]")
+    elif push_to_registry and skip_push:
+        # User wants to push but also specified --skip-push, honor the flag
+        console.print(
+            "[yellow]⚠️  PUSH_TO_REGISTRY=true but --skip-push specified, skipping push[/yellow]"
+        )
 
     builder = DockerComposeBuilder(
         image_name=image_name,
