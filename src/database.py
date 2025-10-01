@@ -228,12 +228,12 @@ class SensorDatabase:
             self.batch_buffer = []
             self.last_commit_time = time.time()
 
+        except sqlite3.Error as e:
+            self.logger.exception(f"Failed to commit batch: {e}")
+            raise
+        else:
             # Return the count of committed records
             return count
-
-        except sqlite3.Error as e:
-            self.logger.error(f"Failed to commit batch: {e}")
-            raise
             # Ignore read-only errors on close
 
         # Checkpoint WAL to ensure data is written to main database file
@@ -350,9 +350,10 @@ class SensorDatabase:
             cursor = self.conn.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
-            return True
         except Exception:
             return False
+        else:
+            return True
 
     def get_readings(self, limit: int | None = None) -> list:
         """Get sensor readings from the database."""
@@ -367,7 +368,7 @@ class SensorDatabase:
             rows = cursor.fetchall()
             return [dict(zip(columns, row, strict=False)) for row in rows]
         except Exception as e:
-            self.logger.error(f"Failed to get readings: {e}")
+            self.logger.exception(f"Failed to get readings: {e}")
             return []
 
     def get_reading_stats(self) -> dict:
@@ -422,7 +423,7 @@ class SensorDatabase:
                 },
             }
         except Exception as e:
-            self.logger.error(f"Failed to get database stats: {e}")
+            self.logger.exception(f"Failed to get database stats: {e}")
             return {
                 "total_readings": 0,
                 "anomaly_count": 0,
