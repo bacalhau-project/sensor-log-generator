@@ -19,7 +19,6 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import click
 import semver
@@ -39,7 +38,7 @@ class BuildError(Exception):
 class DockerComposeBuilder:
     def __init__(
         self,
-        image_name: Optional[str] = None,
+        image_name: str | None = None,
         platforms: str = "linux/amd64,linux/arm64",
         dockerfile: str = "Dockerfile",
         registry: str = "ghcr.io",
@@ -366,7 +365,7 @@ class DockerComposeBuilder:
         console.print("[green]✓[/green] Builder created and ready")
         return True
 
-    def get_current_version(self) -> Optional[semver.Version]:
+    def get_current_version(self) -> semver.Version | None:
         """Get the current version from git tags"""
         try:
             result = self._run_command(["git", "tag", "--list", "v*"], check=False)
@@ -389,7 +388,7 @@ class DockerComposeBuilder:
             pass
         return None
 
-    def bump_version(self, current: Optional[semver.Version], bump_type: str) -> semver.Version:
+    def bump_version(self, current: semver.Version | None, bump_type: str) -> semver.Version:
         """Bump the version based on type"""
         if current is None:
             # Start with 1.0.0 if no version exists
@@ -677,11 +676,11 @@ class DockerComposeBuilder:
     help="Docker Compose file for building",
 )
 def main(
-    image_name: Optional[str],
+    image_name: str | None,
     platforms: str,
     dockerfile: str,
     registry: str,
-    version_tag: Optional[str],
+    version_tag: str | None,
     version_bump: str,
     dev_mode: bool,
     skip_push: bool,

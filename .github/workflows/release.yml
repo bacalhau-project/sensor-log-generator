@@ -11,6 +11,11 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -49,7 +54,7 @@ jobs:
       contents: write
       packages: write
       id-token: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,7 +97,7 @@ jobs:
         run: |
           # Get the previous tag
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${VERSION}^" 2>/dev/null || echo "")
-          
+
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, including all commits"
             COMMIT_RANGE=""
@@ -100,13 +105,13 @@ jobs:
             echo "Generating changelog from $PREVIOUS_TAG to $VERSION"
             COMMIT_RANGE="$PREVIOUS_TAG..$VERSION"
           fi
-          
+
           # Generate changelog
           {
             echo "CHANGELOG<<EOF"
             echo "## 🚀 What's Changed"
             echo ""
-            
+
             # Features
             FEATURES=$(git log $COMMIT_RANGE --pretty=format:"* %s (%h)" --grep="^feat" 2>/dev/null)
             if [ -n "$FEATURES" ]; then
@@ -114,7 +119,7 @@ jobs:
               echo "$FEATURES"
               echo ""
             fi
-            
+
             # Bug fixes
             FIXES=$(git log $COMMIT_RANGE --pretty=format:"* %s (%h)" --grep="^fix" 2>/dev/null)
             if [ -n "$FIXES" ]; then
@@ -122,7 +127,7 @@ jobs:
               echo "$FIXES"
               echo ""
             fi
-            
+
             # Documentation
             DOCS=$(git log $COMMIT_RANGE --pretty=format:"* %s (%h)" --grep="^docs" 2>/dev/null)
             if [ -n "$DOCS" ]; then
@@ -130,7 +135,7 @@ jobs:
               echo "$DOCS"
               echo ""
             fi
-            
+
             # Performance
             PERF=$(git log $COMMIT_RANGE --pretty=format:"* %s (%h)" --grep="^perf" 2>/dev/null)
             if [ -n "$PERF" ]; then
@@ -138,7 +143,7 @@ jobs:
               echo "$PERF"
               echo ""
             fi
-            
+
             # All other commits
             OTHER=$(git log $COMMIT_RANGE --pretty=format:"* %s (%h)" --grep="^feat" --grep="^fix" --grep="^docs" --grep="^perf" --invert-grep 2>/dev/null)
             if [ -n "$OTHER" ]; then
@@ -146,12 +151,12 @@ jobs:
               echo "$OTHER"
               echo ""
             fi
-            
+
             # Contributors
             echo "### 👥 Contributors"
             git log $COMMIT_RANGE --pretty=format:"* @%an" | sort -u
             echo ""
-            
+
             # Statistics
             if [ -n "$COMMIT_RANGE" ]; then
               echo "### 📊 Statistics"
@@ -160,32 +165,34 @@ jobs:
               echo "* $COMMITS commits"
               echo "* $FILES"
             fi
-            
+
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
       - name: Build and push with build.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Install Python dependencies for build script
           pip install rich click semver pyyaml
-          
+
           # Set CI environment variable to ensure proper tagging
           export CI=true
-          
+
           # Build and push with the specific version tag
           python build.py --version-tag ${{ steps.version.outputs.version_number }}
-          
+
           # Additional tags for releases
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_number }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          
+
           # Create major and minor version tags
           MAJOR=$(echo ${{ steps.version.outputs.version_number }} | cut -d. -f1)
           MINOR=$(echo ${{ steps.version.outputs.version_number }} | cut -d. -f1,2)
-          
+
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_number }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${MAJOR}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${MAJOR}
-          
+
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_number }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${MINOR}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${MINOR}
 
@@ -203,7 +210,7 @@ jobs:
           # Install cosign
           curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /tmp/cosign
           chmod +x /tmp/cosign
-          
+
           # Sign the images
           /tmp/cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_number }}
           /tmp/cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
@@ -221,24 +228,24 @@ jobs:
             sbom.spdx.json
           body: |
             ## 🐳 Docker Images
-            
+
             ### Pull the image:
             ```bash
             # Latest version
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            
+
             # Specific version
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            
+
             # Major version (will update with patches)
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v$(echo ${{ steps.version.outputs.version_number }} | cut -d. -f1)
             ```
-            
+
             ### Run the container:
             ```bash
             # Using docker-compose (recommended)
             docker-compose up -d
-            
+
             # Or using docker run
             docker run -d \
               --name sensor-log-generator \
@@ -246,7 +253,7 @@ jobs:
               -v $(pwd)/config:/app/config \
               ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
             ```
-            
+
             ### Run with WAL mode disabled (for Docker Desktop on Mac/Windows):
             ```bash
             docker run -d \
@@ -255,17 +262,17 @@ jobs:
               -e SENSOR_WAL=false \
               ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
             ```
-            
+
             ---
-            
+
             ${{ steps.changelog.outputs.CHANGELOG }}
-            
+
             ---
-            
+
             ## 📦 Assets
             - **SBOM**: Software Bill of Materials attached below
             - **Container Signature**: Images are signed with Cosign/Sigstore
-            
+
             ## 🔗 Quick Links
             - [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
             - [Container Registry](https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }})

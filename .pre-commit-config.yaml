@@ -9,15 +9,17 @@ repos:
       - id: check-ast
         name: Check Python syntax
 
-  # Ruff - Auto-fix formatting and basic linting issues
+  # Ruff - Auto-fix formatting and linting issues (uses pyproject.toml config)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.10
     hooks:
       - id: ruff
         name: Ruff auto-fix
-        args: [--fix, --select, "F,E,W,I,TRY", --ignore, "E501,W293,TRY401"]  # Include TRY rules, ignore redundant exception in log
+        args: [--fix]  # Uses config from pyproject.toml
+        files: ^(src/|tests/|main\.py)
       - id: ruff-format
         name: Ruff formatter
+        files: ^(src/|tests/|main\.py)
 
   # Basic file checks (fast)
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -48,8 +50,8 @@ repos:
   - repo: local
     hooks:
       - id: full-lint
-        name: Full linting check
-        entry: uv run ruff check src/ tests/ main.py
+        name: Full linting check (same as CI)
+        entry: bash -c 'uv run ruff check src/ tests/ main.py && uv run ruff format --check src/ tests/ main.py'
         language: system
         pass_filenames: false
         stages: [manual]
