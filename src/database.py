@@ -228,8 +228,8 @@ class SensorDatabase:
             self.batch_buffer = []
             self.last_commit_time = time.time()
 
-        except sqlite3.Error as e:
-            self.logger.exception(f"Failed to commit batch: {e}")
+        except sqlite3.Error:
+            self.logger.exception("Failed to commit batch")
             raise
         else:
             # Return the count of committed records
@@ -367,8 +367,8 @@ class SensorDatabase:
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             return [dict(zip(columns, row, strict=False)) for row in rows]
-        except Exception as e:
-            self.logger.exception(f"Failed to get readings: {e}")
+        except Exception:
+            self.logger.exception("Failed to get readings")
             return []
 
     def get_reading_stats(self) -> dict:
@@ -422,8 +422,8 @@ class SensorDatabase:
                     "avg_insert_time_ms": 0.0,  # Not tracking this
                 },
             }
-        except Exception as e:
-            self.logger.exception(f"Failed to get database stats: {e}")
+        except Exception:
+            self.logger.exception("Failed to get database stats")
             return {
                 "total_readings": 0,
                 "anomaly_count": 0,

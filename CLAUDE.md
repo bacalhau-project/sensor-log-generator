@@ -88,10 +88,10 @@ The system uses a nested identity format:
 ## Development Guidelines
 - **CRITICAL: Pre-commit hooks are configured for practical development**
   - Setup: `uv run scripts/setup.py --dev`
-  - On commit: Auto-fixes formatting, checks syntax, removes trailing whitespace, runs type checking
+  - On commit: Auto-fixes formatting, checks syntax, removes trailing whitespace, runs type checking, checks exception handling (TRY rules)
   - On push: Runs tests and security scans
   - Manual full check: `uv run scripts/check.py --fix`
-- Always use ruff for python lint checking
+- Always use ruff for python lint checking (includes TRY rules for proper exception handling)
 - Always use uv, instead of python, when writing python scripts
 - **Type checking with mypy**:
   - Runs automatically on every commit via pre-commit hooks
