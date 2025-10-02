@@ -106,9 +106,64 @@ docker-run-delete:
 docker-test:
     ./test_container.sh
 
-# Build multi-platform Docker images
+# Build multi-platform Docker images and push to registry
 docker-build-multi:
-    uv run build.py build --push
+    uv run build.py --push
+
+# Test build locally without pushing (single platform, faster)
+build-test:
+    @echo "🔨 Testing local build (linux/amd64 only, no push)..."
+    uv run build.py --dev --platforms linux/amd64 --skip-push
+
+# Test build and push to your personal registry (dev mode)
+build-dev:
+    @echo "🔨 Building and pushing dev image..."
+    @echo "ℹ️  This will push to ghcr.io/{{`git config user.name | tr '[:upper:]' '[:lower:]'`}}/sensor-log-generator:dev"
+    PUSH_TO_REGISTRY=true uv run build.py --dev --platforms linux/amd64
+
+# Test full multi-platform build locally (no push)
+build-test-multi:
+    @echo "🔨 Testing full multi-platform build (no push)..."
+    @echo "⚠️  This will take several minutes..."
+    uv run build.py --platforms linux/amd64,linux/arm64 --skip-push
+
+# Build and push production release (requires version tag)
+build-release VERSION:
+    @echo "🚀 Building and pushing release v{{VERSION}}..."
+    @echo "⚠️  This will create git tags and push to registry"
+    @read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+    PUSH_TO_REGISTRY=true uv run build.py --version-tag {{VERSION}}
+
+# Test the build script configuration without building
+build-check:
+    @echo "🔍 Checking build configuration..."
+    @echo ""
+    @echo "Git remote:"
+    @git remote get-url origin || echo "No git remote configured"
+    @echo ""
+    @echo "Current version:"
+    @git describe --tags --abbrev=0 2>/dev/null || echo "No tags found"
+    @echo ""
+    @echo "Will build as:"
+    @uv run -s build.py --help | head -20
+    @echo ""
+    @echo "Docker buildx builders:"
+    @docker buildx ls || echo "Docker buildx not available"
+
+# Login to GitHub Container Registry for local testing
+ghcr-login:
+    @echo "🔐 Logging into GitHub Container Registry..."
+    @echo "ℹ️  You need a GitHub Personal Access Token with write:packages scope"
+    @echo "ℹ️  Create one at: https://github.com/settings/tokens/new"
+    @echo ""
+    @read -p "Enter your GitHub username: " username && \
+    echo "$$GITHUB_TOKEN" | docker login ghcr.io -u "$$username" --password-stdin
+
+# Test docker login status
+ghcr-test-login:
+    @echo "🔍 Testing GitHub Container Registry access..."
+    @docker pull ghcr.io/bacalhau-project/sensor-log-generator:latest 2>&1 | \
+        grep -q "denied" && echo "❌ Not logged in or no access" || echo "✅ Access confirmed"
 
 # Clean up generated files and caches
 clean:
