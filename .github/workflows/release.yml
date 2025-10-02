@@ -18,7 +18,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository_owner }}/sensor-log-generator
   PYTHON_VERSION: "3.11"
 
 jobs:
