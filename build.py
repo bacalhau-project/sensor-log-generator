@@ -204,33 +204,38 @@ class DockerComposeBuilder:
         # We'll handle this dynamically based on the platforms string
         platform_list = self.platforms.split(",")
 
+        build_config = {
+            "context": ".",
+            "dockerfile": "${DOCKERFILE:-Dockerfile}",
+            "platforms": platform_list,
+            "labels": {
+                "org.opencontainers.image.title": "Sensor Log Generator",
+                "org.opencontainers.image.description": "High-performance sensor data simulator",
+                "org.opencontainers.image.version": "${VERSION:-dev}",
+                "org.opencontainers.image.created": "${BUILD_DATE}",
+                "org.opencontainers.image.revision": "${GIT_COMMIT}",
+            },
+            "args": {
+                "BUILD_DATE": "${BUILD_DATE}",
+                "VERSION": "${VERSION:-dev}",
+                "GIT_COMMIT": "${GIT_COMMIT}",
+            },
+        }
+
+        # Only add cache config if we're pushing (avoid cache push errors for local builds)
+        if not self.skip_push and self.build_cache:
+            build_config["cache_from"] = [
+                "type=registry,ref=${CACHE_FROM:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache}"
+            ]
+            build_config["cache_to"] = [
+                "type=registry,ref=${CACHE_TO:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache},mode=max"
+            ]
+
         compose_content = {
             "services": {
                 "sensor-simulator": {
                     "image": "${IMAGE_TAG:-ghcr.io/bacalhau-project/sensor-log-generator:latest}",
-                    "build": {
-                        "context": ".",
-                        "dockerfile": "${DOCKERFILE:-Dockerfile}",
-                        "platforms": platform_list,
-                        "cache_from": [
-                            "type=registry,ref=${CACHE_FROM:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache}"
-                        ],
-                        "cache_to": [
-                            "type=registry,ref=${CACHE_TO:-ghcr.io/bacalhau-project/sensor-log-generator:buildcache},mode=max"
-                        ],
-                        "labels": {
-                            "org.opencontainers.image.title": "Sensor Log Generator",
-                            "org.opencontainers.image.description": "High-performance sensor data simulator",
-                            "org.opencontainers.image.version": "${VERSION:-dev}",
-                            "org.opencontainers.image.created": "${BUILD_DATE}",
-                            "org.opencontainers.image.revision": "${GIT_COMMIT}",
-                        },
-                        "args": {
-                            "BUILD_DATE": "${BUILD_DATE}",
-                            "VERSION": "${VERSION:-dev}",
-                            "GIT_COMMIT": "${GIT_COMMIT}",
-                        },
-                    },
+                    "build": build_config,
                 }
             }
         }
