@@ -165,6 +165,34 @@ ghcr-test-login:
     @docker pull ghcr.io/bacalhau-project/sensor-log-generator:latest 2>&1 | \
         grep -q "denied" && echo "❌ Not logged in or no access" || echo "✅ Access confirmed"
 
+# Simulate full release workflow locally (requires GITHUB_TOKEN)
+test-release-local VERSION:
+    @echo "🧪 Simulating release workflow for v{{VERSION}}..."
+    @echo ""
+    @if [ -z "$$GITHUB_TOKEN" ]; then \
+        echo "❌ GITHUB_TOKEN not set!"; \
+        echo "   Export your PAT: export GITHUB_TOKEN=ghp_xxxxx"; \
+        exit 1; \
+    fi
+    @echo "✓ GITHUB_TOKEN is set"
+    @echo ""
+    @echo "Step 1: Running tests..."
+    uv run pytest tests/ -v --tb=short || exit 1
+    @echo ""
+    @echo "✓ Tests passed"
+    @echo ""
+    @echo "Step 2: Logging into GHCR..."
+    echo "$$GITHUB_TOKEN" | docker login ghcr.io -u $$(git config user.name) --password-stdin
+    @echo ""
+    @echo "Step 3: Building and pushing..."
+    PUSH_TO_REGISTRY=true uv run build.py --version-tag {{VERSION}}
+    @echo ""
+    @echo "✅ Local release test complete!"
+    @echo ""
+    @echo "To trigger actual CI release:"
+    @echo "  git tag v{{VERSION}}"
+    @echo "  git push origin v{{VERSION}}"
+
 # Clean up generated files and caches
 clean:
     rm -rf .pytest_cache
